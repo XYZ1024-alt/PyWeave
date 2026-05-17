@@ -1,0 +1,51 @@
+.player-controls {
+  display: grid;
+  grid-template-columns: 74px 86px minmax(180px, 1fr) 70px 128px 72px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 18px;
+  border-top: 1px solid #d7dbe2;
+  background: #fbfcfd;
+}
+
+.player-controls button {
+  height: 36px;
+  border: 1px solid #5b6675;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #26313d;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.player-controls button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.player-controls input[type="range"] {
+  width: 100%;
+  accent-color: #2e6f8f;
+}
+
+.speed-control {
+  display: grid;
+  grid-template-columns: 34px minmax(70px, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #46515f;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.speed-control span {
+  text-align: right;
+}
+
+.step-counter {
+  color: #46515f;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: right;
+}

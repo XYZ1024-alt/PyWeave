@@ -1,0 +1,25 @@
+[package]
+name = "pyweave-tauri"
+version = "0.1.0"
+description = "PyWeave algorithm visualization shell"
+edition = "2024"
+
+[lib]
+name = "pyweave_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+pyo3 = { version = "0.28.3", features = ["auto-initialize"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tauri = { version = "2.6.2", features = [] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+opt-level = "z"
+panic = "abort"
+strip = true

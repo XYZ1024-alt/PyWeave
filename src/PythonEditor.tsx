@@ -1,8 +1,12 @@
 import { useEffect, useRef } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import Editor, { loader, type OnMount } from "@monaco-editor/react";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import "monaco-editor/esm/vs/basic-languages/python/python.contribution";
 
 import { ui } from "./i18n";
 import type { Locale } from "./types";
+
+loader.config({ monaco });
 
 type MonacoEditor = Parameters<OnMount>[0];
 type MonacoApi = Parameters<OnMount>[1];
@@ -25,12 +29,13 @@ export function PythonEditor(props: PythonEditorProps) {
     syncCurrentLineDecoration({
       currentLine: props.currentLine,
       decorations: decorationsRef.current,
+      editor: editorRef.current,
       monaco: monacoRef.current,
     });
   }, [props.currentLine]);
 
   return (
-    <div className="editor-shell">
+    <div className="editor-shell" data-current-line={props.currentLine ?? ""}>
       <EditorView code={props.code} onChange={handleChange} onMount={handleMount} />
       <EditorActions isRunning={props.isRunning} locale={props.locale} onRun={props.onRun} />
     </div>
@@ -44,6 +49,12 @@ export function PythonEditor(props: PythonEditorProps) {
     editorRef.current = editor;
     monacoRef.current = monaco;
     decorationsRef.current = editor.createDecorationsCollection();
+    syncCurrentLineDecoration({
+      currentLine: props.currentLine,
+      decorations: decorationsRef.current,
+      editor,
+      monaco,
+    });
   }
 }
 
@@ -102,19 +113,25 @@ const editorOptions = {
 function syncCurrentLineDecoration(options: {
   readonly currentLine: number | undefined;
   readonly decorations: ReturnType<MonacoEditor["createDecorationsCollection"]> | null;
+  readonly editor: MonacoEditor | null;
   readonly monaco: MonacoApi | null;
 }) {
-  if (!options.decorations || !options.monaco || !options.currentLine) {
+  if (!options.decorations || !options.editor || !options.monaco || !options.currentLine) {
     options.decorations?.set([]);
     return;
   }
 
+  const maxColumn = options.editor.getModel()?.getLineMaxColumn(options.currentLine) ?? 1;
+
   options.decorations.set([
     {
-      range: new options.monaco.Range(options.currentLine, 1, options.currentLine, 1),
+      range: new options.monaco.Range(options.currentLine, 1, options.currentLine, maxColumn),
       options: {
         className: "current-execution-line",
         glyphMarginClassName: "current-execution-glyph",
+        inlineClassName: "current-execution-line",
+        linesDecorationsClassName: "current-execution-line",
+        marginClassName: "current-execution-glyph",
         isWholeLine: true,
       },
     },

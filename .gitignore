@@ -23,6 +23,10 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
+# Test reports
+test-results/
+playwright-report/
+
 # Binary build artifacts
 *.exe
 *.msi

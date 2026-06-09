@@ -8,8 +8,11 @@ backend with PyO3 to execute Python code and collect line-by-line trace data.
 
 - Edit and run Python code inside the app.
 - Visualize Python locals as variable and array nodes.
+- See pointer labels directly on array cells.
 - Step through captured execution states.
+- Review localized step guidance, current line context and variable changes.
 - Play, pause and change playback speed.
+- Switch the UI between Chinese and English.
 - Start from built-in templates:
   - Custom Code
   - Bubble Sort
@@ -97,6 +100,12 @@ Run the Rust backend tests:
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Run the TypeScript derivation and localization tests:
+
+```bash
+npm test
 ```
 
 ## Project Structure

@@ -1,8 +1,13 @@
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
+
+import { ui } from "./i18n";
+import type { Locale } from "./types";
 
 type PlayerControlsProps = {
   readonly currentStep: number;
   readonly isPlaying: boolean;
+  readonly locale: Locale;
   readonly playbackSpeed: number;
   readonly totalSteps: number;
   readonly onPlaybackSpeedChange: (speed: number) => void;
@@ -12,7 +17,7 @@ type PlayerControlsProps = {
 
 type TransportProps = Pick<
   PlayerControlsProps,
-  "currentStep" | "isPlaying" | "onPlayingChange" | "onStepChange" | "totalSteps"
+  "currentStep" | "isPlaying" | "locale" | "onPlayingChange" | "onStepChange" | "totalSteps"
 >;
 
 const PLAYBACK_SPEEDS = [0.5, 1, 2] as const;
@@ -23,81 +28,99 @@ export function PlayerControls(props: PlayerControlsProps) {
       <TransportButtons {...props} />
       <ProgressSlider {...props} />
       <SpeedControl
+        locale={props.locale}
         playbackSpeed={props.playbackSpeed}
         onPlaybackSpeedChange={props.onPlaybackSpeedChange}
       />
-      <StepCounter currentStep={props.currentStep} totalSteps={props.totalSteps} />
+      <StepCounter currentStep={props.currentStep} locale={props.locale} totalSteps={props.totalSteps} />
     </div>
   );
 }
 
-function TransportButtons({
-  currentStep,
-  isPlaying,
-  onPlayingChange,
-  onStepChange,
-  totalSteps,
-}: TransportProps) {
-  const lastStep = Math.max(totalSteps - 1, 0);
-  const canGoBack = currentStep > 0;
-  const canGoForward = currentStep < lastStep;
-  const canPlay = totalSteps > 1 && canGoForward;
+function TransportButtons(props: TransportProps) {
+  const state = transportState(props);
 
   return (
-    <>
-      <button type="button" onClick={() => onPlayingChange(!isPlaying)} disabled={!canPlay && !isPlaying}>
-        {isPlaying ? "Pause" : "Play"}
-      </button>
-      <button type="button" onClick={goBack} disabled={!canGoBack}>
-        Previous
-      </button>
-      <button type="button" onClick={goForward} disabled={!canGoForward}>
-        Next
-      </button>
-    </>
+    <div className="transport-buttons">
+      <IconButton label={ui("previous", props.locale)} disabled={!state.canGoBack} onClick={goBack}>
+        <SkipBack size={17} />
+      </IconButton>
+      <IconButton
+        label={props.isPlaying ? ui("pause", props.locale) : ui("play", props.locale)}
+        disabled={!state.canPlay && !props.isPlaying}
+        onClick={() => props.onPlayingChange(!props.isPlaying)}
+      >
+        {props.isPlaying ? <Pause size={18} /> : <Play size={18} />}
+      </IconButton>
+      <IconButton label={ui("next", props.locale)} disabled={!state.canGoForward} onClick={goForward}>
+        <SkipForward size={17} />
+      </IconButton>
+    </div>
   );
 
   function goBack() {
-    onPlayingChange(false);
-    onStepChange(Math.max(currentStep - 1, 0));
+    props.onPlayingChange(false);
+    props.onStepChange(Math.max(props.currentStep - 1, 0));
   }
 
   function goForward() {
-    onPlayingChange(false);
-    onStepChange(Math.min(currentStep + 1, lastStep));
+    props.onPlayingChange(false);
+    props.onStepChange(Math.min(props.currentStep + 1, state.lastStep));
   }
 }
 
-function ProgressSlider({ currentStep, onPlayingChange, onStepChange, totalSteps }: TransportProps) {
-  const lastStep = Math.max(totalSteps - 1, 0);
+function IconButton({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  readonly children: ReactNode;
+  readonly disabled: boolean;
+  readonly label: string;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button type="button" aria-label={label} title={label} onClick={onClick} disabled={disabled}>
+      {children}
+    </button>
+  );
+}
+
+function ProgressSlider(props: TransportProps) {
+  const lastStep = Math.max(props.totalSteps - 1, 0);
 
   return (
-    <input
-      aria-label="Trace progress"
-      type="range"
-      min="0"
-      max={lastStep}
-      value={currentStep}
-      onChange={handleChange}
-      disabled={totalSteps === 0}
-    />
+    <label className="progress-control">
+      <span>{ui("timeline", props.locale)}</span>
+      <input
+        aria-label={ui("timeline", props.locale)}
+        type="range"
+        min="0"
+        max={lastStep}
+        value={props.currentStep}
+        onChange={handleChange}
+        disabled={props.totalSteps === 0}
+      />
+    </label>
   );
 
   function handleChange(event: ChangeEvent<HTMLInputElement>) {
-    onPlayingChange(false);
-    onStepChange(Number(event.target.value));
+    props.onPlayingChange(false);
+    props.onStepChange(Number(event.target.value));
   }
 }
 
 function SpeedControl({
+  locale,
   playbackSpeed,
   onPlaybackSpeedChange,
-}: Pick<PlayerControlsProps, "playbackSpeed" | "onPlaybackSpeedChange">) {
+}: Pick<PlayerControlsProps, "locale" | "playbackSpeed" | "onPlaybackSpeedChange">) {
   return (
     <label className="speed-control">
-      <span>{playbackSpeed.toFixed(1)}x</span>
+      <span>{ui("speed", locale)} {playbackSpeed.toFixed(1)}x</span>
       <input
-        aria-label="Playback speed"
+        aria-label={ui("speed", locale)}
         type="range"
         min="0"
         max={PLAYBACK_SPEEDS.length - 1}
@@ -109,14 +132,26 @@ function SpeedControl({
   );
 }
 
-function StepCounter({ currentStep, totalSteps }: Pick<PlayerControlsProps, "currentStep" | "totalSteps">) {
-  return (
-    <span className="step-counter">
-      {totalSteps === 0 ? "0 / 0" : `${currentStep + 1} / ${totalSteps}`}
-    </span>
-  );
+function StepCounter({
+  currentStep,
+  locale,
+  totalSteps,
+}: Pick<PlayerControlsProps, "currentStep" | "locale" | "totalSteps">) {
+  const value = totalSteps === 0 ? "0 / 0" : `${currentStep + 1} / ${totalSteps}`;
+  return <span className="step-counter">{ui("step", locale)} {value}</span>;
 }
 
 function speedIndex(speed: number): number {
   return Math.max(PLAYBACK_SPEEDS.findIndex((value) => value === speed), 0);
+}
+
+function transportState(props: TransportProps) {
+  const lastStep = Math.max(props.totalSteps - 1, 0);
+
+  return {
+    lastStep,
+    canGoBack: props.currentStep > 0,
+    canGoForward: props.currentStep < lastStep,
+    canPlay: props.totalSteps > 1 && props.currentStep < lastStep,
+  };
 }

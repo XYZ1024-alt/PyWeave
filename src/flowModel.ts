@@ -1,4 +1,4 @@
-import type { FlowEdge, FlowNode, JsonObject, JsonValue } from "./types";
+import type { FlowEdge, FlowNode, JsonObject, JsonValue, VariableChange } from "./types";
 
 const ARRAY_NODE_SPACING = 74;
 const ROW_HEIGHT = 112;
@@ -21,6 +21,7 @@ const POINTER_VARIABLES = new Set([
 type FlowModel = {
   readonly nodes: FlowNode[];
   readonly edges: FlowEdge[];
+  readonly changes: VariableChange[];
 };
 
 type ArrayEntry = {
@@ -36,15 +37,18 @@ export function createFlowModel(
 ): FlowModel {
   const entries = orderEntries(Object.entries(current));
   const arrays = collectArrays(entries);
+  const targetArray = selectTargetArray(arrays);
+  const pointers = targetArray ? collectPointers(current, targetArray) : new Map<number, string[]>();
   const nodes = entries.flatMap(([variable, value], row) =>
     Array.isArray(value)
-      ? createArrayNodes(variable, value, previous, row, revision)
-      : createLabelNode(variable, value, row),
+      ? createArrayNodes({ variable, values: value, previous, row, revision, pointers })
+      : createLabelNode(variable, value, previous, row),
   );
 
   return {
     nodes,
-    edges: createPointerEdges(current, arrays),
+    edges: [],
+    changes: createVariableChanges(current, previous),
   };
 }
 
@@ -61,51 +65,66 @@ function collectArrays(entries: readonly [string, JsonValue][]): ArrayEntry[] {
   );
 }
 
-function createArrayNodes(
-  variable: string,
-  values: readonly JsonValue[],
-  previous: JsonObject | undefined,
-  row: number,
-  revision: number,
-): FlowNode[] {
-  return values.map((value, index) => ({
-    id: arrayNodeId(variable, index),
+function createArrayNodes(options: {
+  readonly variable: string;
+  readonly values: readonly JsonValue[];
+  readonly previous: JsonObject | undefined;
+  readonly row: number;
+  readonly revision: number;
+  readonly pointers: ReadonlyMap<number, readonly string[]>;
+}): FlowNode[] {
+  return options.values.map((value, index) => ({
+    id: arrayNodeId(options.variable, index),
     type: "arrayValue" as const,
     position: {
       x: LEFT_OFFSET + index * ARRAY_NODE_SPACING,
-      y: TOP_OFFSET + row * ROW_HEIGHT,
+      y: TOP_OFFSET + options.row * ROW_HEIGHT,
     },
     data: {
-      variable,
+      variable: options.variable,
       index,
+      pointers: options.pointers.get(index) ?? [],
       value,
-      revision,
-      changed: didArrayValueChange(previous?.[variable], value, index),
+      revision: options.revision,
+      changed: didArrayValueChange(options.previous?.[options.variable], value, index),
     },
   }));
 }
 
-function createLabelNode(variable: string, value: JsonValue, row: number): FlowNode[] {
+function createLabelNode(
+  variable: string,
+  value: JsonValue,
+  previous: JsonObject | undefined,
+  row: number,
+): FlowNode[] {
   return [
     {
       id: variable,
       type: "labelValue" as const,
       position: { x: LEFT_OFFSET, y: TOP_OFFSET + row * ROW_HEIGHT },
-      data: { variable, value },
+      data: {
+        variable,
+        value,
+        changed: previous ? !jsonValuesEqual(previous[variable], value) : true,
+      },
     },
   ];
 }
 
-function createPointerEdges(current: JsonObject, arrays: readonly ArrayEntry[]): FlowEdge[] {
-  const targetArray = selectTargetArray(arrays);
+function collectPointers(
+  current: JsonObject,
+  targetArray: ArrayEntry,
+): ReadonlyMap<number, readonly string[]> {
+  const entries = Object.entries(current)
+    .filter(([variable, value]) => isPointer(variable, value, targetArray.values))
+    .map(([variable, value]) => [value as number, variable] as const);
+  const pointers = new Map<number, string[]>();
 
-  if (!targetArray) {
-    return [];
+  for (const [index, variable] of entries) {
+    pointers.set(index, [...(pointers.get(index) ?? []), variable]);
   }
 
-  return Object.entries(current)
-    .filter(([variable, value]) => isPointer(variable, value, targetArray.values))
-    .map(([variable, value]) => pointerEdge(variable, value as number, targetArray.variable));
+  return pointers;
 }
 
 function selectTargetArray(arrays: readonly ArrayEntry[]): ArrayEntry | undefined {
@@ -128,18 +147,6 @@ function isPointer(
   return value >= 0 && value < targetValues.length;
 }
 
-function pointerEdge(variable: string, index: number, arrayVariable: string): FlowEdge {
-  return {
-    id: `pointer-${variable}`,
-    source: variable,
-    target: arrayNodeId(arrayVariable, index),
-    animated: true,
-    type: "smoothstep",
-    label: variable,
-    className: "pointer-edge",
-  };
-}
-
 function didArrayValueChange(
   previousValue: JsonValue | undefined,
   currentValue: JsonValue,
@@ -150,4 +157,48 @@ function didArrayValueChange(
 
 function arrayNodeId(variable: string, index: number): string {
   return `${variable}-${index}`;
+}
+
+function createVariableChanges(
+  current: JsonObject,
+  previous: JsonObject | undefined,
+): VariableChange[] {
+  if (!previous) {
+    return Object.entries(current).map(([name, after]) => ({
+      name,
+      before: undefined,
+      after,
+      status: "added" as const,
+    }));
+  }
+
+  return allVariableNames(current, previous).flatMap((name) => variableChange(name, current, previous));
+}
+
+function allVariableNames(current: JsonObject, previous: JsonObject): string[] {
+  return [...new Set([...Object.keys(previous), ...Object.keys(current)])].sort();
+}
+
+function variableChange(
+  name: string,
+  current: JsonObject,
+  previous: JsonObject,
+): VariableChange[] {
+  if (!(name in current)) {
+    return [{ name, before: previous[name], after: undefined, status: "removed" }];
+  }
+
+  if (!(name in previous)) {
+    return [{ name, before: undefined, after: current[name], status: "added" }];
+  }
+
+  if (jsonValuesEqual(previous[name], current[name])) {
+    return [];
+  }
+
+  return [{ name, before: previous[name], after: current[name], status: "changed" }];
+}
+
+function jsonValuesEqual(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
 }

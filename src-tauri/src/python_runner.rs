@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::python_policy;
-use crate::tracer::{TraceCollector, TraceEvent};
+use crate::tracer::{source_lines, TraceCollector, TraceRun};
 
 const ALGORITHM_FILE: &str = "<pyweave_algorithm>";
 
@@ -23,7 +23,7 @@ finally:
     sys.settrace(None)
 "#;
 
-pub fn run_sort_trace(source: &str) -> PyResult<Vec<TraceEvent>> {
+pub fn run_python_trace(source: &str) -> PyResult<TraceRun> {
     Python::attach(|py| {
         python_policy::validate_source(py, source)?;
 
@@ -36,19 +36,22 @@ pub fn run_sort_trace(source: &str) -> PyResult<Vec<TraceEvent>> {
         globals.set_item("_algorithm_globals", algorithm_globals)?;
         run_driver(py, &globals)?;
 
-        let events = collector.borrow(py).events().to_vec();
-        validate_timeline(events)
+        let frames = collector.borrow(py).frames().to_vec();
+        validate_trace_run(TraceRun {
+            source_lines: source_lines(source),
+            frames,
+        })
     })
 }
 
-fn validate_timeline(events: Vec<TraceEvent>) -> PyResult<Vec<TraceEvent>> {
-    if events.is_empty() {
+fn validate_trace_run(trace_run: TraceRun) -> PyResult<TraceRun> {
+    if trace_run.frames.is_empty() {
         return Err(PyValueError::new_err(
             "Python code executed without traceable line events",
         ));
     }
 
-    Ok(events)
+    Ok(trace_run)
 }
 
 fn compile_algorithm<'py>(py: Python<'py>, source: &str) -> PyResult<Bound<'py, PyAny>> {
@@ -79,7 +82,7 @@ mod tests {
     use pyo3::types::PyTypeMethods;
     use serde_json::json;
 
-    use super::run_sort_trace;
+    use super::run_python_trace;
 
     #[test]
     fn captures_custom_function_name() {
@@ -93,9 +96,10 @@ def custom_increment(values):
 answer = custom_increment([1, 2])
 "#;
 
-        let timeline = run_sort_trace(source).expect("custom function should trace");
+        let trace_run = run_python_trace(source).expect("custom function should trace");
         assert!(
-            timeline
+            trace_run
+                .frames
                 .iter()
                 .any(|event| { event.locals.get("items") == Some(&json!([2, 3])) })
         );
@@ -110,12 +114,26 @@ for i in range(len(items)):
 done = items
 "#;
 
-        let timeline = run_sort_trace(source).expect("top-level code should trace");
+        let trace_run = run_python_trace(source).expect("top-level code should trace");
         assert!(
-            timeline
+            trace_run
+                .frames
                 .iter()
                 .any(|event| { event.locals.get("items") == Some(&json!([0, 1])) })
         );
+    }
+
+    #[test]
+    fn returns_source_lines_and_frame_metadata() {
+        let source = "items = [1]\ndef touch(values):\n    return values[0]\nanswer = touch(items)\n";
+
+        let trace_run = run_python_trace(source).expect("metadata should trace");
+        assert_eq!(trace_run.source_lines[0].number, 1);
+        assert_eq!(trace_run.source_lines[0].text, "items = [1]");
+        assert!(trace_run.frames.iter().enumerate().all(|(step, frame)| frame.step == step));
+        assert!(trace_run.frames.iter().any(|frame| {
+            frame.scope_name == "touch" && frame.call_depth > 0
+        }));
     }
 
     #[test]
@@ -126,9 +144,10 @@ items = sorted(items)
 total = sum(items)
 "#;
 
-        let timeline = run_sort_trace(source).expect("safe builtins should trace");
+        let trace_run = run_python_trace(source).expect("safe builtins should trace");
         assert!(
-            timeline
+            trace_run
+                .frames
                 .iter()
                 .any(|event| { event.locals.get("items") == Some(&json!([1, 2, 3])) })
         );
@@ -141,7 +160,7 @@ items = [1]
 import os
 "#;
 
-        let error = run_sort_trace(source).expect_err("imports should be rejected");
+        let error = run_python_trace(source).expect_err("imports should be rejected");
         Python::attach(|py| {
             assert_eq!(error.get_type(py).name().unwrap().to_string(), "ValueError");
             assert!(error.to_string().contains("PyWeave policy rejected line 3"));
@@ -156,8 +175,8 @@ value = float("nan")
 done = value
 "#;
 
-        let timeline = run_sort_trace(source).expect("unsupported locals should be marked");
-        assert!(timeline.iter().any(|event| {
+        let trace_run = run_python_trace(source).expect("unsupported locals should be marked");
+        assert!(trace_run.frames.iter().any(|event| {
             event
                 .locals
                 .get("value")
@@ -173,7 +192,7 @@ items = [1]
 boom = items[3]
 "#;
 
-        let error = run_sort_trace(source).expect_err("runtime exception should be returned");
+        let error = run_python_trace(source).expect_err("runtime exception should be returned");
         Python::attach(|py| {
             assert_eq!(error.get_type(py).name().unwrap().to_string(), "IndexError");
         });
@@ -186,7 +205,7 @@ items = list(range(100000))
 done = len(items)
 "#;
 
-        let error = run_sort_trace(source).expect_err("large snapshots should stop execution");
+        let error = run_python_trace(source).expect_err("large snapshots should stop execution");
         Python::attach(|py| {
             assert_eq!(
                 error.get_type(py).name().unwrap().to_string(),
@@ -204,7 +223,7 @@ while True:
     i = i + 1
 "#;
 
-        let error = run_sort_trace(source).expect_err("trace limit should stop execution");
+        let error = run_python_trace(source).expect_err("trace limit should stop execution");
         Python::attach(|py| {
             assert_eq!(
                 error.get_type(py).name().unwrap().to_string(),

@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { type NodeProps } from "@xyflow/react";
 
 import { formatValue } from "./formatValue";
 import type { ArrayNodeData, LabelNodeData } from "./types";
@@ -11,21 +11,21 @@ export function ArrayValueNode({ data }: NodeProps) {
 
   return (
     <div className={className} title={valueData.variable} style={style}>
-      <Handle type="target" position={Position.Top} className="node-handle" />
       <span className="array-index">{valueData.index}</span>
       <span className="array-value">{formatValue(valueData.value)}</span>
+      <PointerLabels pointers={valueData.pointers} />
     </div>
   );
 }
 
 export function LabelValueNode({ data }: NodeProps) {
   const valueData = data as LabelNodeData;
+  const className = valueData.changed ? "label-node is-mutated" : "label-node";
 
   return (
-    <div className="label-node">
+    <div className={className}>
       <span className="label-name">{valueData.variable}</span>
       <span className="label-value">{formatValue(valueData.value)}</span>
-      <Handle type="source" position={Position.Bottom} className="node-handle" />
     </div>
   );
 }
@@ -39,4 +39,20 @@ function flashStyle(revision: number): CSSProperties {
   return {
     animationName: revision % 2 === 0 ? "value-flash-even" : "value-flash-odd",
   };
+}
+
+function PointerLabels({ pointers }: { readonly pointers: readonly string[] }) {
+  if (pointers.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="pointer-labels">
+      {pointers.map((pointer) => (
+        <span className="pointer-pill" key={pointer}>
+          {pointer}
+        </span>
+      ))}
+    </span>
+  );
 }

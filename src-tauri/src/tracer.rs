@@ -14,14 +14,32 @@ const DEFAULT_MAX_SNAPSHOT_BYTES: usize = 262_144;
 const SNAPSHOT_LIMIT_ENV: &str = "PYWEAVE_MAX_SNAPSHOT_BYTES";
 
 #[derive(Clone, Debug, Serialize)]
-pub struct TraceEvent {
+#[serde(rename_all = "camelCase")]
+pub struct SourceLine {
+    pub number: usize,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceFrame {
+    pub step: usize,
     pub line: usize,
+    pub scope_name: String,
+    pub call_depth: usize,
     pub locals: BTreeMap<String, Value>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceRun {
+    pub source_lines: Vec<SourceLine>,
+    pub frames: Vec<TraceFrame>,
 }
 
 #[pyclass]
 pub struct TraceCollector {
-    events: Vec<TraceEvent>,
+    frames: Vec<TraceFrame>,
     target_filename: String,
 }
 
@@ -30,7 +48,7 @@ impl TraceCollector {
     #[new]
     pub fn new(target_filename: &str) -> Self {
         Self {
-            events: Vec::new(),
+            frames: Vec::new(),
             target_filename: target_filename.to_owned(),
         }
     }
@@ -45,7 +63,7 @@ impl TraceCollector {
             return Ok(());
         }
 
-        if self.events.len() >= MAX_TRACE_EVENTS {
+        if self.frames.len() >= MAX_TRACE_EVENTS {
             return Err(PyRuntimeError::new_err(format!(
                 "Trace snapshot limit exceeded: {MAX_TRACE_EVENTS} frames"
             )));
@@ -54,8 +72,11 @@ impl TraceCollector {
         let locals = copy_locals(frame)?;
         enforce_snapshot_size(&locals)?;
 
-        self.events.push(TraceEvent {
+        self.frames.push(TraceFrame {
+            step: self.frames.len(),
             line: frame.getattr("f_lineno")?.extract()?,
+            scope_name: scope_name(frame)?,
+            call_depth: call_depth(frame, &self.target_filename)?,
             locals,
         });
 
@@ -64,8 +85,8 @@ impl TraceCollector {
 }
 
 impl TraceCollector {
-    pub fn events(&self) -> &[TraceEvent] {
-        &self.events
+    pub fn frames(&self) -> &[TraceFrame] {
+        &self.frames
     }
 
     fn should_capture(&self, frame: &Bound<'_, PyAny>, event: &str) -> PyResult<bool> {
@@ -77,6 +98,17 @@ impl TraceCollector {
         let filename: String = code.getattr("co_filename")?.extract()?;
         Ok(filename == self.target_filename)
     }
+}
+
+pub fn source_lines(source: &str) -> Vec<SourceLine> {
+    source
+        .lines()
+        .enumerate()
+        .map(|(index, text)| SourceLine {
+            number: index + 1,
+            text: text.to_owned(),
+        })
+        .collect()
 }
 
 fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
@@ -101,6 +133,33 @@ fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
     }
 
     Ok(output)
+}
+
+fn scope_name(frame: &Bound<'_, PyAny>) -> PyResult<String> {
+    frame.getattr("f_code")?.getattr("co_name")?.extract()
+}
+
+fn call_depth(frame: &Bound<'_, PyAny>, target_filename: &str) -> PyResult<usize> {
+    let mut depth = 0;
+    let mut current = frame.getattr("f_back")?;
+
+    while !current.is_none() {
+        if is_target_frame(&current, target_filename)? {
+            depth += 1;
+        }
+
+        current = current.getattr("f_back")?;
+    }
+
+    Ok(depth)
+}
+
+fn is_target_frame(frame: &Bound<'_, PyAny>, target_filename: &str) -> PyResult<bool> {
+    let filename: String = frame
+        .getattr("f_code")?
+        .getattr("co_filename")?
+        .extract()?;
+    Ok(filename == target_filename)
 }
 
 fn visualizable_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {

@@ -5,31 +5,31 @@ mod python_value;
 mod tracer;
 
 use error::TraceExecutionError;
-use tracer::TraceEvent;
+use tracer::TraceRun;
 
 #[tauri::command]
-fn trace_sort_algorithm(python_code: String) -> Result<Vec<TraceEvent>, TraceExecutionError> {
+fn trace_python_code(python_code: String) -> Result<TraceRun, TraceExecutionError> {
     pyo3::Python::initialize();
-    let timeline = python_runner::run_sort_trace(&python_code)
+    let trace_run = python_runner::run_python_trace(&python_code)
         .map_err(|error| pyo3::Python::attach(|py| TraceExecutionError::from_py_err(py, error)))?;
-    println!("trace_sort_algorithm returned {} states", timeline.len());
-    Ok(timeline)
+    println!("trace_python_code returned {} frames", trace_run.frames.len());
+    Ok(trace_run)
 }
 
 pub fn run() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![trace_sort_algorithm])
+        .invoke_handler(tauri::generate_handler![trace_python_code])
         .run(tauri::generate_context!())
         .expect("failed to run PyWeave Tauri application");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::trace_sort_algorithm;
+    use super::trace_python_code;
 
     #[test]
     fn command_formats_syntax_error() {
-        let error = trace_sort_algorithm("x =\n".to_owned()).unwrap_err();
+        let error = trace_python_code("x =\n".to_owned()).unwrap_err();
 
         assert_eq!(error.kind, "SyntaxError");
         assert_eq!(error.line, Some(1));
@@ -39,7 +39,7 @@ mod tests {
     #[test]
     fn command_formats_runtime_error() {
         let source = "items = [1]\nboom = items[3]\n";
-        let error = trace_sort_algorithm(source.to_owned()).unwrap_err();
+        let error = trace_python_code(source.to_owned()).unwrap_err();
 
         assert_eq!(error.kind, "IndexError");
         assert_eq!(error.line, Some(2));
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn command_formats_policy_error_line() {
         let source = "items = [1]\nimport os\n";
-        let error = trace_sort_algorithm(source.to_owned()).unwrap_err();
+        let error = trace_python_code(source.to_owned()).unwrap_err();
 
         assert_eq!(error.kind, "ValueError");
         assert_eq!(error.line, Some(2));
@@ -59,7 +59,7 @@ mod tests {
     #[test]
     fn command_formats_trace_limit_error() {
         let source = "i = 0\nwhile True:\n    i = i + 1\n";
-        let error = trace_sort_algorithm(source.to_owned()).unwrap_err();
+        let error = trace_python_code(source.to_owned()).unwrap_err();
 
         assert_eq!(error.kind, "RuntimeError");
         assert_eq!(error.line, Some(3));

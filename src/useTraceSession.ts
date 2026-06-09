@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-import type { TraceEvent } from "./types";
+import type { TraceFrame, TraceRun } from "./types";
 
 const BASE_PLAYBACK_DELAY_MS = 700;
 
@@ -12,15 +12,16 @@ type TraceError = {
 };
 
 type TraceRunState = {
-  readonly timeline: TraceEvent[];
+  readonly traceRun: TraceRun | null;
   readonly error: string | null;
+  readonly errorLine: number | null;
   readonly running: boolean;
 };
 
 type TraceRunAction =
   | { readonly type: "start" }
-  | { readonly type: "timeline"; readonly timeline: TraceEvent[] }
-  | { readonly type: "error"; readonly error: string }
+  | { readonly type: "traceRun"; readonly traceRun: TraceRun }
+  | { readonly type: "error"; readonly error: string; readonly line: number | null }
   | { readonly type: "stop" }
   | { readonly type: "reset" };
 
@@ -42,14 +43,15 @@ type TraceSessionOptions = {
 type PlaybackState = ReturnType<typeof usePlayback>;
 
 const INITIAL_RUN_STATE: TraceRunState = {
-  timeline: [],
+  traceRun: null,
   error: null,
+  errorLine: null,
   running: true,
 };
 
 export function useTraceSession({ initialCode }: TraceSessionOptions) {
   const [runState, dispatch] = useReducer(traceRunReducer, INITIAL_RUN_STATE);
-  const playback = usePlayback({ totalSteps: runState.timeline.length });
+  const playback = usePlayback({ totalSteps: runState.traceRun?.frames.length ?? 0 });
   const activeRunId = useRef(0);
   const initialRunStarted = useRef(false);
 
@@ -65,6 +67,8 @@ export function useTraceSession({ initialCode }: TraceSessionOptions) {
   return {
     ...runState,
     ...playback,
+    currentFrame: currentFrame(runState.traceRun, playback.currentStep),
+    previousFrame: currentFrame(runState.traceRun, playback.currentStep - 1),
     reset: () => resetTraceSession({ activeRunId, dispatch, playback }),
     runTrace: (code: string) => startTraceRun({ code, activeRunId, dispatch, playback }),
   };
@@ -119,15 +123,15 @@ function usePlayback({ totalSteps }: { readonly totalSteps: number }) {
 function traceRunReducer(state: TraceRunState, action: TraceRunAction): TraceRunState {
   switch (action.type) {
     case "start":
-      return { timeline: [], error: null, running: true };
-    case "timeline":
-      return { ...state, timeline: action.timeline, error: null };
+      return { traceRun: null, error: null, errorLine: null, running: true };
+    case "traceRun":
+      return { ...state, traceRun: action.traceRun, error: null, errorLine: null };
     case "error":
-      return { ...state, error: action.error };
+      return { ...state, error: action.error, errorLine: action.line };
     case "stop":
       return { ...state, running: false };
     case "reset":
-      return { timeline: [], error: null, running: false };
+      return { traceRun: null, error: null, errorLine: null, running: false };
   }
 }
 
@@ -139,7 +143,7 @@ function startTraceRun(options: StartTraceRunOptions) {
   options.dispatch({ type: "start" });
 
   loadTrace(options.code)
-    .then((timeline) => receiveTimeline({ ...options, runId, timeline }))
+    .then((traceRun) => receiveTraceRun({ ...options, runId, traceRun }))
     .catch((reason) => captureError({ ...options, runId, reason }))
     .finally(() => stopRunning({ ...options, runId }));
 }
@@ -151,12 +155,12 @@ function resetTraceSession(options: Omit<StartTraceRunOptions, "code">) {
   options.dispatch({ type: "reset" });
 }
 
-function receiveTimeline(options: StartTraceRunOptions & {
+function receiveTraceRun(options: StartTraceRunOptions & {
   readonly runId: number;
-  readonly timeline: TraceEvent[];
+  readonly traceRun: TraceRun;
 }) {
   if (options.runId === options.activeRunId.current) {
-    options.dispatch({ type: "timeline", timeline: options.timeline });
+    options.dispatch({ type: "traceRun", traceRun: options.traceRun });
   }
 }
 
@@ -165,7 +169,11 @@ function captureError(options: StartTraceRunOptions & {
   readonly reason: unknown;
 }) {
   if (options.runId === options.activeRunId.current) {
-    options.dispatch({ type: "error", error: formatTraceError(options.reason) });
+    options.dispatch({
+      type: "error",
+      error: formatTraceError(options.reason),
+      line: traceErrorLine(options.reason),
+    });
   }
 }
 
@@ -197,14 +205,26 @@ function isTraceError(reason: unknown): reason is TraceError {
   return typeof reason === "object" && reason !== null && "message" in reason;
 }
 
-async function loadTrace(pythonCode: string): Promise<TraceEvent[]> {
-  const timeline = await invoke<TraceEvent[]>("trace_sort_algorithm", {
+function traceErrorLine(reason: unknown): number | null {
+  if (!isTraceError(reason) || typeof reason.line !== "number") {
+    return null;
+  }
+
+  return reason.line;
+}
+
+async function loadTrace(pythonCode: string): Promise<TraceRun> {
+  const traceRun = await invoke<TraceRun>("trace_python_code", {
     pythonCode,
   });
 
-  if (!Array.isArray(timeline) || timeline.length === 0) {
-    throw new Error("trace_sort_algorithm returned an empty timeline");
+  if (!Array.isArray(traceRun.frames) || traceRun.frames.length === 0) {
+    throw new Error("trace_python_code returned an empty trace");
   }
 
-  return timeline;
+  return traceRun;
+}
+
+function currentFrame(traceRun: TraceRun | null, step: number): TraceFrame | undefined {
+  return traceRun?.frames[step];
 }

@@ -1,15 +1,19 @@
 import type { FlowEdge, FlowNode, JsonObject, JsonValue, VariableChange } from "./types";
 
-const ARRAY_NODE_SPACING = 74;
+const ARRAY_NODE_SPACING = 80;
 const ROW_HEIGHT = 112;
 const LEFT_OFFSET = 48;
 const TOP_OFFSET = 42;
+const MAX_VISIBLE_ARRAY_CELLS = 48;
+const ARRAY_HEAD_CELLS = 24;
+const ARRAY_TAIL_CELLS = 16;
 const POINTER_VARIABLES = new Set([
   "i",
   "j",
   "k",
   "left",
   "right",
+  "mid",
   "low",
   "high",
   "pivot",
@@ -29,6 +33,21 @@ type ArrayEntry = {
   readonly values: readonly JsonValue[];
   readonly row: number;
 };
+
+type VisibleArrayCell = {
+  readonly kind: "cell";
+  readonly index: number;
+  readonly value: JsonValue;
+};
+
+type VisibleArrayGap = {
+  readonly kind: "gap";
+  readonly hiddenCount: number;
+  readonly rangeEnd: number;
+  readonly rangeStart: number;
+};
+
+type VisibleArrayItem = VisibleArrayCell | VisibleArrayGap;
 
 export function createFlowModel(
   current: JsonObject,
@@ -73,22 +92,126 @@ function createArrayNodes(options: {
   readonly revision: number;
   readonly pointers: ReadonlyMap<number, readonly string[]>;
 }): FlowNode[] {
-  return options.values.map((value, index) => ({
-    id: arrayNodeId(options.variable, index),
+  return visibleArrayItems(options.values, options.pointers).map((item, slot) =>
+    item.kind === "cell"
+      ? createArrayValueNode(options, item, slot)
+      : createArrayGapNode({ variable: options.variable, item, row: options.row, slot }),
+  );
+}
+
+function createArrayValueNode(
+  options: {
+    readonly variable: string;
+    readonly values: readonly JsonValue[];
+    readonly previous: JsonObject | undefined;
+    readonly row: number;
+    readonly revision: number;
+    readonly pointers: ReadonlyMap<number, readonly string[]>;
+  },
+  item: VisibleArrayCell,
+  slot: number,
+): FlowNode {
+  return {
+    id: arrayNodeId(options.variable, item.index),
     type: "arrayValue" as const,
-    position: {
-      x: LEFT_OFFSET + index * ARRAY_NODE_SPACING,
-      y: TOP_OFFSET + options.row * ROW_HEIGHT,
-    },
+    position: arrayPosition(options.row, slot),
     data: {
       variable: options.variable,
-      index,
-      pointers: options.pointers.get(index) ?? [],
-      value,
+      index: item.index,
+      pointers: options.pointers.get(item.index) ?? [],
+      value: item.value,
       revision: options.revision,
-      changed: didArrayValueChange(options.previous?.[options.variable], value, index),
+      changed: didArrayValueChange(options.previous?.[options.variable], item.value, item.index),
     },
-  }));
+  };
+}
+
+function createArrayGapNode(options: {
+  readonly variable: string;
+  readonly item: VisibleArrayGap;
+  readonly row: number;
+  readonly slot: number;
+}): FlowNode {
+  return {
+    id: `${options.variable}-gap-${options.item.rangeStart}-${options.item.rangeEnd}`,
+    type: "arrayGap" as const,
+    position: arrayPosition(options.row, options.slot),
+    data: {
+      variable: options.variable,
+      hiddenCount: options.item.hiddenCount,
+      rangeStart: options.item.rangeStart,
+      rangeEnd: options.item.rangeEnd,
+    },
+  };
+}
+
+function arrayPosition(row: number, slot: number) {
+  return {
+    x: LEFT_OFFSET + slot * ARRAY_NODE_SPACING,
+    y: TOP_OFFSET + row * ROW_HEIGHT,
+  };
+}
+
+function visibleArrayItems(
+  values: readonly JsonValue[],
+  pointers: ReadonlyMap<number, readonly string[]>,
+): VisibleArrayItem[] {
+  if (values.length <= MAX_VISIBLE_ARRAY_CELLS) {
+    return values.map((value, index) => ({ kind: "cell", index, value }));
+  }
+
+  return insertArrayGaps(visibleArrayIndexes(values.length, pointers), values);
+}
+
+function visibleArrayIndexes(
+  length: number,
+  pointers: ReadonlyMap<number, readonly string[]>,
+): number[] {
+  const indexes = new Set<number>();
+  const tailStart = Math.max(length - ARRAY_TAIL_CELLS, ARRAY_HEAD_CELLS);
+
+  addIndexRange(indexes, 0, Math.min(ARRAY_HEAD_CELLS, length));
+  addIndexRange(indexes, tailStart, length);
+  for (const index of pointers.keys()) {
+    indexes.add(index);
+  }
+
+  return [...indexes].filter((index) => index >= 0 && index < length).sort((left, right) => left - right);
+}
+
+function addIndexRange(indexes: Set<number>, start: number, end: number) {
+  for (let index = start; index < end; index += 1) {
+    indexes.add(index);
+  }
+}
+
+function insertArrayGaps(
+  indexes: readonly number[],
+  values: readonly JsonValue[],
+): VisibleArrayItem[] {
+  let previousIndex = -1;
+  const items: VisibleArrayItem[] = [];
+
+  for (const index of indexes) {
+    items.push(...arrayGap(previousIndex + 1, index - 1));
+    items.push({ kind: "cell", index, value: values[index] });
+    previousIndex = index;
+  }
+
+  return items;
+}
+
+function arrayGap(rangeStart: number, rangeEnd: number): VisibleArrayGap[] {
+  if (rangeStart > rangeEnd) {
+    return [];
+  }
+
+  return [{
+    kind: "gap",
+    hiddenCount: rangeEnd - rangeStart + 1,
+    rangeStart,
+    rangeEnd,
+  }];
 }
 
 function createLabelNode(

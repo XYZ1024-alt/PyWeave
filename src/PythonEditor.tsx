@@ -121,7 +121,14 @@ function syncCurrentLineDecoration(options: {
     return;
   }
 
-  const maxColumn = options.editor.getModel()?.getLineMaxColumn(options.currentLine) ?? 1;
+  const model = options.editor.getModel();
+
+  if (!model || options.currentLine > model.getLineCount()) {
+    options.decorations.set([]);
+    return;
+  }
+
+  const maxColumn = model.getLineMaxColumn(options.currentLine);
 
   options.decorations.set([
     {

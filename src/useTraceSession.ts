@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-import type { TraceFrame, TraceRun } from "./types";
+import type { TraceDisplayError, TraceFrame, TraceRun } from "./types";
 
 const BASE_PLAYBACK_DELAY_MS = 700;
 
@@ -13,7 +13,7 @@ type TraceError = {
 
 type TraceRunState = {
   readonly traceRun: TraceRun | null;
-  readonly error: string | null;
+  readonly error: TraceDisplayError | null;
   readonly errorLine: number | null;
   readonly running: boolean;
 };
@@ -21,7 +21,7 @@ type TraceRunState = {
 type TraceRunAction =
   | { readonly type: "start" }
   | { readonly type: "traceRun"; readonly traceRun: TraceRun }
-  | { readonly type: "error"; readonly error: string; readonly line: number | null }
+  | { readonly type: "error"; readonly error: TraceDisplayError }
   | { readonly type: "stop" }
   | { readonly type: "reset" };
 
@@ -127,7 +127,7 @@ function traceRunReducer(state: TraceRunState, action: TraceRunAction): TraceRun
     case "traceRun":
       return { ...state, traceRun: action.traceRun, error: null, errorLine: null };
     case "error":
-      return { ...state, error: action.error, errorLine: action.line };
+      return { ...state, error: action.error, errorLine: action.error.line };
     case "stop":
       return { ...state, running: false };
     case "reset":
@@ -172,7 +172,6 @@ function captureError(options: StartTraceRunOptions & {
     options.dispatch({
       type: "error",
       error: formatTraceError(options.reason),
-      line: traceErrorLine(options.reason),
     });
   }
 }
@@ -187,30 +186,24 @@ function playbackDelay(speed: number): number {
   return Math.round(BASE_PLAYBACK_DELAY_MS / speed);
 }
 
-function formatTraceError(reason: unknown): string {
+function formatTraceError(reason: unknown): TraceDisplayError {
   if (isTraceError(reason)) {
-    const location = typeof reason.line === "number" ? `Line ${reason.line}: ` : "";
-    const kind = reason.kind ? `${reason.kind}: ` : "";
-    return `${location}${kind}${reason.message ?? "Python execution failed"}`;
+    return {
+      kind: reason.kind ?? "PythonError",
+      line: typeof reason.line === "number" ? reason.line : null,
+      message: reason.message ?? "Python execution failed",
+    };
   }
 
   if (reason instanceof Error) {
-    return reason.message;
+    return { kind: "FrontendError", line: null, message: reason.message };
   }
 
-  return String(reason);
+  return { kind: "UnknownError", line: null, message: String(reason) };
 }
 
 function isTraceError(reason: unknown): reason is TraceError {
   return typeof reason === "object" && reason !== null && "message" in reason;
-}
-
-function traceErrorLine(reason: unknown): number | null {
-  if (!isTraceError(reason) || typeof reason.line !== "number") {
-    return null;
-  }
-
-  return reason.line;
 }
 
 async function loadTrace(pythonCode: string): Promise<TraceRun> {

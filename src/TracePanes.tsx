@@ -15,6 +15,7 @@ import type {
   JsonValue,
   Locale,
   SourceLine,
+  TraceDisplayError,
   TraceFrame,
   VariableChange,
 } from "./types";
@@ -36,7 +37,7 @@ type FlowPaneProps = {
   readonly changes: readonly VariableChange[];
   readonly currentStep: number;
   readonly edges: FlowEdge[];
-  readonly error: string | null;
+  readonly error: TraceDisplayError | null;
   readonly frame: TraceFrame | undefined;
   readonly isPlaying: boolean;
   readonly locale: Locale;
@@ -80,9 +81,12 @@ export function FlowPane(props: FlowPaneProps) {
   return (
     <section className="flow-pane" aria-label="Algorithm playback">
       <FlowHeader {...props} />
-      {props.error ? <div className="toast-error" role="alert">{props.error}</div> : null}
       <div className="visualization-shell">
-        {!props.error ? <FlowStage nodes={props.nodes} edges={props.edges} revision={props.currentStep} /> : null}
+        {props.error ? (
+          <ErrorPanel error={props.error} locale={props.locale} sourceLines={props.sourceLines} />
+        ) : (
+          <FlowStage nodes={props.nodes} edges={props.edges} revision={props.currentStep} />
+        )}
         <TeachingSidebar {...props} />
       </div>
       <PlayerControls
@@ -128,7 +132,7 @@ function LocaleToggle({
 }
 
 function FlowHeader(props: FlowPaneProps) {
-  const line = props.frame?.line ?? "-";
+  const line = props.error?.line ?? props.frame?.line ?? "-";
 
   return (
     <div className="pane-header">
@@ -154,7 +158,8 @@ function StepGuide(props: FlowPaneProps) {
     <section className="sidebar-section">
       <h2>{ui("teachingTitle", props.locale)}</h2>
       <div className="step-meta">
-        <span>{ui("step", props.locale)} {props.totalSteps === 0 ? "0 / 0" : `${props.currentStep + 1} / ${props.totalSteps}`}</span>
+        <span>{ui("step", props.locale)} {stepLabel(props.currentStep, props.totalSteps)}</span>
+        <span>{ui("event", props.locale)} {traceEventLabel(props.frame, props.locale)}</span>
         <span>{ui("currentScope", props.locale)} {props.frame?.scopeName ?? "-"}</span>
         <span>{ui("callDepth", props.locale)} {props.frame?.callDepth ?? "-"}</span>
       </div>
@@ -162,6 +167,45 @@ function StepGuide(props: FlowPaneProps) {
       <p>{props.teachingNote.summary}</p>
       {sourceLine ? <code className="current-line-preview">{sourceLine.text}</code> : null}
     </section>
+  );
+}
+
+function ErrorPanel({
+  error,
+  locale,
+  sourceLines,
+}: {
+  readonly error: TraceDisplayError;
+  readonly locale: Locale;
+  readonly sourceLines: readonly SourceLine[];
+}) {
+  const sourceLine = sourceLineForNumber(sourceLines, error.line);
+
+  return (
+    <section className="error-panel" role="alert">
+      <h2>{ui("errorTitle", locale)}</h2>
+      <dl>
+        <ErrorDetail label={ui("errorKind", locale)} value={error.kind} />
+        <ErrorDetail label={ui("errorLine", locale)} value={error.line ?? "-"} />
+        <ErrorDetail label={ui("errorMessage", locale)} value={error.message} />
+      </dl>
+      {sourceLine ? <code className="current-line-preview">{sourceLine.text}</code> : null}
+    </section>
+  );
+}
+
+function ErrorDetail({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: number | string;
+}) {
+  return (
+    <div>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -250,11 +294,34 @@ function ViewportSync({ revision }: { readonly revision: number }) {
   return null;
 }
 
+function stepLabel(currentStep: number, totalSteps: number): string {
+  return totalSteps === 0 ? "0 / 0" : `${currentStep + 1} / ${totalSteps}`;
+}
+
 function sourceLineForFrame(
   sourceLines: readonly SourceLine[],
   frame: TraceFrame | undefined,
 ): SourceLine | undefined {
-  return sourceLines.find((line) => line.number === frame?.line);
+  if (frame?.lineText) {
+    return { number: frame.line, text: frame.lineText };
+  }
+
+  return sourceLineForNumber(sourceLines, frame?.line ?? null);
+}
+
+function sourceLineForNumber(
+  sourceLines: readonly SourceLine[],
+  lineNumber: number | null,
+): SourceLine | undefined {
+  return sourceLines.find((line) => line.number === lineNumber);
+}
+
+function traceEventLabel(frame: TraceFrame | undefined, locale: Locale): string {
+  if (frame?.event === "return") {
+    return ui("eventReturn", locale);
+  }
+
+  return ui("eventLine", locale);
 }
 
 function formatOptionalValue(value: JsonValue | undefined): string {

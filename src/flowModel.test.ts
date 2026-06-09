@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { createFlowModel } from "./flowModel";
-import type { ArrayNodeData } from "./types";
+import type { ArrayGapNodeData, ArrayNodeData } from "./types";
 
 describe("createFlowModel", () => {
   it("places pointer labels directly on array cells", () => {
@@ -27,5 +27,16 @@ describe("createFlowModel", () => {
 
     expect(model.changes.map((change) => change.name)).toEqual(["i", "total"]);
     expect(model.changes[0]).toMatchObject({ name: "i", before: 1, after: 2 });
+  });
+
+  it("summarizes large arrays while keeping pointer cells visible", () => {
+    const items = Array.from({ length: 100 }, (_, index) => index);
+    const model = createFlowModel({ items, mid: 50 }, undefined, 1);
+    const gap = model.nodes.find((node) => node.type === "arrayGap");
+    const pointerNode = model.nodes.find((node) => node.id === "items-50");
+
+    expect((gap?.data as ArrayGapNodeData | undefined)?.hiddenCount).toBeGreaterThan(0);
+    expect((pointerNode?.data as ArrayNodeData | undefined)?.pointers).toEqual(["mid"]);
+    expect(model.nodes.length).toBeLessThan(items.length);
   });
 });

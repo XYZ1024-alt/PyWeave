@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { type NodeProps } from "@xyflow/react";
 
 import { formatValue } from "./formatValue";
-import type { ArrayNodeData, LabelNodeData } from "./types";
+import type { ArrayGapNodeData, ArrayNodeData, LabelNodeData } from "./types";
 
 export function ArrayValueNode({ data }: NodeProps) {
   const valueData = data as ArrayNodeData;
@@ -30,8 +30,23 @@ export function LabelValueNode({ data }: NodeProps) {
   );
 }
 
+export function ArrayGapNode({ data }: NodeProps) {
+  const valueData = data as ArrayGapNodeData;
+
+  return (
+    <div
+      className="array-gap-node"
+      title={`${valueData.variable}[${valueData.rangeStart}..${valueData.rangeEnd}]`}
+    >
+      <span>...</span>
+      <span>{valueData.hiddenCount}</span>
+    </div>
+  );
+}
+
 export const nodeTypes = {
   arrayValue: ArrayValueNode,
+  arrayGap: ArrayGapNode,
   labelValue: LabelValueNode,
 };
 

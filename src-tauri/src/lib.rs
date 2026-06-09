@@ -2,6 +2,8 @@ mod error;
 mod python_policy;
 mod python_runner;
 mod python_value;
+#[cfg_attr(test, allow(dead_code))]
+mod trace_worker;
 mod tracer;
 
 use error::TraceExecutionError;
@@ -9,14 +11,26 @@ use tracer::TraceRun;
 
 #[tauri::command]
 fn trace_python_code(python_code: String) -> Result<TraceRun, TraceExecutionError> {
+    run_trace_command(&python_code)
+}
+
+#[cfg(not(test))]
+fn run_trace_command(python_code: &str) -> Result<TraceRun, TraceExecutionError> {
+    trace_worker::run_python_trace_in_subprocess(python_code)
+}
+
+#[cfg(test)]
+fn run_trace_command(python_code: &str) -> Result<TraceRun, TraceExecutionError> {
     pyo3::Python::initialize();
-    let trace_run = python_runner::run_python_trace(&python_code)
-        .map_err(|error| pyo3::Python::attach(|py| TraceExecutionError::from_py_err(py, error)))?;
-    println!("trace_python_code returned {} frames", trace_run.frames.len());
-    Ok(trace_run)
+    python_runner::run_python_trace(python_code)
+        .map_err(|error| pyo3::Python::attach(|py| TraceExecutionError::from_py_err(py, error)))
 }
 
 pub fn run() {
+    if trace_worker::worker_requested() {
+        std::process::exit(trace_worker::run_worker_from_stdio());
+    }
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![trace_python_code])
         .run(tauri::generate_context!())

@@ -15,28 +15,20 @@ const SOURCE_LINES = [
 const TRACE_RUN = {
   sourceLines: SOURCE_LINES.map((text, index) => ({ number: index + 1, text })),
   frames: [
-    { step: 0, line: 3, scopeName: "<module>", callDepth: 0, locals: { items: [3, 1, 4, 1, 5] } },
-    { step: 1, line: 4, scopeName: "<module>", callDepth: 0, locals: { items: [3, 1, 4, 1, 5], i: 0 } },
+    frame(0, 3, { items: [3, 1, 4, 1, 5] }),
+    frame(1, 4, { items: [3, 1, 4, 1, 5], i: 0 }),
+    frame(2, 5, { items: [3, 1, 4, 1, 5], i: 0, total: 0 }),
+    frame(3, 8, { items: [3, 1, 4, 1, 5], i: 0, total: 3 }),
+    frame(4, 9, { items: [3, 1, 4, 1, 5], i: 1, total: 3 }),
     {
-      step: 2,
-      line: 5,
-      scopeName: "<module>",
-      callDepth: 0,
-      locals: { items: [3, 1, 4, 1, 5], i: 0, total: 0 },
-    },
-    {
-      step: 3,
-      line: 8,
-      scopeName: "<module>",
-      callDepth: 0,
-      locals: { items: [3, 1, 4, 1, 5], i: 0, total: 3 },
-    },
-    {
-      step: 4,
+      step: 5,
+      event: "return",
       line: 9,
+      lineText: SOURCE_LINES[8],
       scopeName: "<module>",
       callDepth: 0,
       locals: { items: [3, 1, 4, 1, 5], i: 1, total: 3 },
+      returnValue: null,
     },
   ],
 };
@@ -73,7 +65,7 @@ test("renders the teaching visualization and English locale", async ({ page }) =
   await nextStep(page);
   await nextStep(page);
 
-  await expect(page.getByRole("heading", { name: "遍历并累计" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "遍历并累加" })).toBeVisible();
   await expect(page.locator(".pointer-pill", { hasText: "i" })).toBeVisible();
   await expect(page.locator(".change-row", { hasText: "total" })).toContainText("3");
   await expect(page.locator('.editor-shell[data-current-line="8"]')).toBeVisible();
@@ -85,6 +77,19 @@ test("renders the teaching visualization and English locale", async ({ page }) =
   await expect(page.getByText("Variable Inspector")).toBeVisible();
   await expect(page.getByLabel("Next")).toBeVisible();
 });
+
+function frame(step: number, line: number, locals: Record<string, unknown>) {
+  return {
+    step,
+    event: "line",
+    line,
+    lineText: SOURCE_LINES[line - 1],
+    scopeName: "<module>",
+    callDepth: 0,
+    locals,
+    returnValue: null,
+  };
+}
 
 async function nextStep(page: import("@playwright/test").Page) {
   await page.locator(".transport-buttons button").nth(2).click();

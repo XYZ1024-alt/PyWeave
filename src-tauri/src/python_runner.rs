@@ -5,7 +5,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
 use crate::python_policy;
-use crate::tracer::{source_lines, TraceCollector, TraceRun};
+use crate::tracer::{TraceCollector, TraceRun, source_lines};
 
 const ALGORITHM_FILE: &str = "<pyweave_algorithm>";
 
@@ -27,7 +27,7 @@ pub fn run_python_trace(source: &str) -> PyResult<TraceRun> {
     Python::attach(|py| {
         python_policy::validate_source(py, source)?;
 
-        let collector = Py::new(py, TraceCollector::new(ALGORITHM_FILE))?;
+        let collector = Py::new(py, TraceCollector::new(ALGORITHM_FILE, source))?;
         let globals = create_driver_globals(py, &collector)?;
         let algorithm_globals = python_policy::create_algorithm_globals(py)?;
         let compiled = compile_algorithm(py, source)?;
@@ -125,15 +125,37 @@ done = items
 
     #[test]
     fn returns_source_lines_and_frame_metadata() {
-        let source = "items = [1]\ndef touch(values):\n    return values[0]\nanswer = touch(items)\n";
+        let source =
+            "items = [1]\ndef touch(values):\n    return values[0]\nanswer = touch(items)\n";
 
         let trace_run = run_python_trace(source).expect("metadata should trace");
         assert_eq!(trace_run.source_lines[0].number, 1);
         assert_eq!(trace_run.source_lines[0].text, "items = [1]");
-        assert!(trace_run.frames.iter().enumerate().all(|(step, frame)| frame.step == step));
-        assert!(trace_run.frames.iter().any(|frame| {
-            frame.scope_name == "touch" && frame.call_depth > 0
-        }));
+        assert!(
+            trace_run
+                .frames
+                .iter()
+                .enumerate()
+                .all(|(step, frame)| frame.step == step)
+        );
+        assert!(
+            trace_run
+                .frames
+                .iter()
+                .any(|frame| { frame.event == "line" && frame.line_text == "items = [1]" })
+        );
+        assert!(
+            trace_run
+                .frames
+                .iter()
+                .any(|frame| { frame.event == "return" && frame.scope_name == "touch" })
+        );
+        assert!(
+            trace_run
+                .frames
+                .iter()
+                .any(|frame| { frame.scope_name == "touch" && frame.call_depth > 0 })
+        );
     }
 
     #[test]

@@ -1,12 +1,12 @@
 use pyo3::exceptions::PyBaseException;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyTracebackMethods, PyTypeMethods};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 const TRACE_FILE_MARKER: &str = "File \"<pyweave_algorithm>\", line ";
 const POLICY_LINE_MARKER: &str = "PyWeave policy rejected line ";
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TraceExecutionError {
     pub kind: String,
     pub line: Option<usize>,
@@ -25,6 +25,14 @@ impl TraceExecutionError {
             kind,
             line,
             message,
+        }
+    }
+
+    pub fn new(kind: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            line: None,
+            message: message.into(),
         }
     }
 }

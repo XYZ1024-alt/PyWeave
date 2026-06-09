@@ -13,10 +13,13 @@ export type SourceLine = {
 
 export type TraceFrame = {
   readonly step: number;
+  readonly event: "line" | "return";
   readonly line: number;
+  readonly lineText: string;
   readonly scopeName: string;
   readonly callDepth: number;
   readonly locals: JsonObject;
+  readonly returnValue: JsonValue | null;
 };
 
 export type TraceRun = {
@@ -31,6 +34,12 @@ export type VariableChange = {
   readonly status: "added" | "changed" | "removed";
 };
 
+export type TraceDisplayError = {
+  readonly kind: string;
+  readonly line: number | null;
+  readonly message: string;
+};
+
 export type ArrayNodeData = {
   readonly variable: string;
   readonly index: number;
@@ -40,11 +49,21 @@ export type ArrayNodeData = {
   readonly revision: number;
 };
 
+export type ArrayGapNodeData = {
+  readonly variable: string;
+  readonly hiddenCount: number;
+  readonly rangeStart: number;
+  readonly rangeEnd: number;
+};
+
 export type LabelNodeData = {
   readonly variable: string;
   readonly changed: boolean;
   readonly value: JsonValue;
 };
 
-export type FlowNode = Node<ArrayNodeData, "arrayValue"> | Node<LabelNodeData, "labelValue">;
+export type FlowNode =
+  | Node<ArrayNodeData, "arrayValue">
+  | Node<ArrayGapNodeData, "arrayGap">
+  | Node<LabelNodeData, "labelValue">;
 export type FlowEdge = Edge;

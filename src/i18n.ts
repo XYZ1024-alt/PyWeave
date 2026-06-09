@@ -9,6 +9,13 @@ type UiKey =
   | "currentScope"
   | "editorTitle"
   | "emptyChanges"
+  | "errorKind"
+  | "errorLine"
+  | "errorMessage"
+  | "errorTitle"
+  | "event"
+  | "eventLine"
+  | "eventReturn"
   | "line"
   | "next"
   | "play"
@@ -34,6 +41,13 @@ export const UI_TEXT: Readonly<Record<UiKey, LocalizedText>> = {
   currentScope: { zh: "作用域", en: "Scope" },
   editorTitle: { zh: "Python 编辑器", en: "Python Editor" },
   emptyChanges: { zh: "本步没有变量变化", en: "No variable changes in this step" },
+  errorKind: { zh: "类型", en: "Kind" },
+  errorLine: { zh: "行号", en: "Line" },
+  errorMessage: { zh: "消息", en: "Message" },
+  errorTitle: { zh: "运行失败", en: "Run Failed" },
+  event: { zh: "事件", en: "Event" },
+  eventLine: { zh: "执行行", en: "line" },
+  eventReturn: { zh: "返回", en: "return" },
   line: { zh: "行", en: "line" },
   next: { zh: "下一步", en: "Next" },
   pause: { zh: "暂停", en: "Pause" },

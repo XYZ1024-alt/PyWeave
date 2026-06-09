@@ -2,7 +2,8 @@
 
 PyWeave is a desktop algorithm visualization app for Python code. It combines a
 Monaco-based Python editor with a React Flow variable graph, then uses a Tauri
-backend with PyO3 to execute Python code and collect line-by-line trace data.
+backend with PyO3 to collect line-by-line trace data in an isolated worker
+process.
 
 ## Features
 
@@ -19,6 +20,7 @@ backend with PyO3 to execute Python code and collect line-by-line trace data.
   - Binary Search
   - Two-Pointer Reverse
 - See syntax and runtime errors with line information.
+- Run Python tracing in a separate worker process with explicit timeout handling.
 
 ## Tech Stack
 
@@ -40,15 +42,20 @@ backend with PyO3 to execute Python code and collect line-by-line trace data.
 - Tauri system dependencies for your operating system
 
 Python must be available on the machine because PyWeave executes user-provided
-Python code through the native Tauri backend.
+Python code through the native Tauri backend worker.
 
 ## Security Model
 
-PyWeave runs Python locally for algorithm visualization. By default, the backend
-accepts a restricted Python subset: basic control flow, functions, indexing,
-literals and a small set of safe builtins such as `len`, `range`, `list`,
-`min`, `max`, `sum` and `sorted`. Imports, attribute access, classes, lambdas
-and indirect calls are rejected with an explicit line-numbered error.
+PyWeave runs Python locally for algorithm visualization. The Tauri command
+starts a dedicated trace worker process and communicates with it through a JSON
+stdin/stdout protocol. If the worker exceeds the configured timeout, the parent
+process terminates it and reports a `WorkerTimeout` error.
+
+By default, the backend accepts a restricted Python subset: basic control flow,
+functions, indexing, literals and a small set of safe builtins such as `len`,
+`range`, `list`, `min`, `max`, `sum` and `sorted`. Imports, attribute access,
+classes, lambdas and indirect calls are rejected with an explicit line-numbered
+error.
 
 Set `PYWEAVE_ALLOW_UNRESTRICTED_PYTHON=1` only for trusted local code when full
 Python execution is required. Unrestricted mode gives code the same host access
@@ -57,6 +64,10 @@ as the desktop process.
 Trace capture is bounded by `MAX_TRACE_EVENTS` in the backend and by a local
 snapshot byte limit. Set `PYWEAVE_MAX_SNAPSHOT_BYTES=0` to disable the snapshot
 size limit for trusted local experiments.
+
+Trace worker execution uses `PYWEAVE_TRACE_TIMEOUT_MS=5000` by default. Set it
+to another positive integer to change the timeout, or `0` to disable the timeout
+for trusted local debugging.
 
 ## Install
 
@@ -69,7 +80,7 @@ npm install
 Run the Tauri desktop app in development mode:
 
 ```bash
-npm run tauri -- dev
+npm run dev:desktop
 ```
 
 Run the frontend dev server only:
@@ -99,13 +110,25 @@ Generated installers and binaries are written under `src-tauri/target/`.
 Run the Rust backend tests:
 
 ```bash
-cargo test --manifest-path src-tauri/Cargo.toml
+npm run test:backend
 ```
 
 Run the TypeScript derivation and localization tests:
 
 ```bash
 npm test
+```
+
+Run the Playwright visual workflow test:
+
+```bash
+npm run test:e2e
+```
+
+Run the full local verification set:
+
+```bash
+npm run test:all
 ```
 
 ## Project Structure

@@ -91,6 +91,10 @@ textarea {
   cursor: pointer;
 }
 
+.locale-toggle button:hover {
+  color: #1f6f8b;
+}
+
 .locale-toggle button.is-selected {
   background: #1f6f8b;
   color: #ffffff;
@@ -118,6 +122,11 @@ textarea {
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.template-picker button:hover {
+  border-color: #7a8795;
+  background: #303741;
 }
 
 .template-picker button.is-selected {
@@ -156,9 +165,19 @@ textarea {
   box-shadow: 0 8px 22px rgba(242, 184, 75, 0.24);
 }
 
+.editor-actions button:hover:not(:disabled) {
+  background: #ffd166;
+}
+
 .editor-actions button:disabled {
   cursor: wait;
   opacity: 0.62;
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid #1f6f8b;
+  outline-offset: 2px;
 }
 
 .current-execution-line {
@@ -244,6 +263,53 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.error-panel {
+  align-self: center;
+  justify-self: center;
+  width: min(620px, calc(100% - 48px));
+  padding: 22px;
+  border: 1px solid #c85a4a;
+  border-radius: 8px;
+  background: #fff8f6;
+  color: #2b1d1a;
+  box-shadow: 0 18px 42px rgba(80, 22, 16, 0.16);
+}
+
+.error-panel h2 {
+  margin: 0 0 16px;
+  color: #9f2f24;
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.error-panel dl {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.error-panel dl div {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.error-panel dt {
+  color: #8c6b63;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.error-panel dd {
+  min-width: 0;
+  margin: 0;
+  color: #2b1d1a;
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+  font-weight: 750;
+  overflow-wrap: anywhere;
+}
+
 .variable-inspector {
   min-height: 0;
   overflow: auto;
@@ -320,6 +386,30 @@ textarea {
     border-color 120ms ease,
     box-shadow 120ms ease,
     transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.array-gap-node {
+  display: grid;
+  grid-template-rows: 34px 24px;
+  place-items: center;
+  width: 64px;
+  height: 72px;
+  border: 1px dashed #8f9aa6;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #5c6875;
+  box-shadow: 0 6px 14px rgba(29, 36, 43, 0.08);
+  text-align: center;
+}
+
+.array-gap-node span:first-child {
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.array-gap-node span:last-child {
+  font-size: 11px;
+  font-weight: 850;
 }
 
 .array-node.is-mutated {
@@ -406,23 +496,6 @@ textarea {
   font-size: 16px;
   font-weight: 800;
   overflow-wrap: anywhere;
-}
-
-.toast-error {
-  position: fixed;
-  top: 18px;
-  right: 18px;
-  z-index: 20;
-  max-width: min(560px, calc(100vw - 36px));
-  padding: 14px 16px;
-  border: 1px solid #b9332a;
-  border-radius: 6px;
-  background: #b9332a;
-  color: #ffffff;
-  box-shadow: 0 16px 40px rgba(80, 22, 16, 0.24);
-  font-size: 14px;
-  font-weight: 750;
-  line-height: 1.45;
 }
 
 .react-flow__node {

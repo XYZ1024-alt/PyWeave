@@ -20,6 +20,7 @@ export function TemplatePicker({
         <button
           key={template.id}
           type="button"
+          aria-pressed={template.id === selectedTemplateId}
           className={template.id === selectedTemplateId ? "is-selected" : undefined}
           title={template.description[locale]}
           onClick={() => onSelectTemplate(template)}

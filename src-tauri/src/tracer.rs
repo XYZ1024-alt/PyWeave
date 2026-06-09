@@ -4,7 +4,7 @@ use std::env;
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::python_value::to_json_value;
@@ -12,25 +12,29 @@ use crate::python_value::to_json_value;
 pub const MAX_TRACE_EVENTS: usize = 1000;
 const DEFAULT_MAX_SNAPSHOT_BYTES: usize = 262_144;
 const SNAPSHOT_LIMIT_ENV: &str = "PYWEAVE_MAX_SNAPSHOT_BYTES";
+const CAPTURED_EVENTS: &[&str] = &["line", "return"];
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceLine {
     pub number: usize,
     pub text: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TraceFrame {
     pub step: usize,
+    pub event: String,
     pub line: usize,
+    pub line_text: String,
     pub scope_name: String,
     pub call_depth: usize,
     pub locals: BTreeMap<String, Value>,
+    pub return_value: Option<Value>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TraceRun {
     pub source_lines: Vec<SourceLine>,
@@ -40,15 +44,17 @@ pub struct TraceRun {
 #[pyclass]
 pub struct TraceCollector {
     frames: Vec<TraceFrame>,
+    source_lines: Vec<SourceLine>,
     target_filename: String,
 }
 
 #[pymethods]
 impl TraceCollector {
     #[new]
-    pub fn new(target_filename: &str) -> Self {
+    pub fn new(target_filename: &str, source: &str) -> Self {
         Self {
             frames: Vec::new(),
+            source_lines: source_lines(source),
             target_filename: target_filename.to_owned(),
         }
     }
@@ -57,7 +63,7 @@ impl TraceCollector {
         &mut self,
         frame: &Bound<'_, PyAny>,
         event: &str,
-        _arg: &Bound<'_, PyAny>,
+        arg: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
         if !self.should_capture(frame, event)? {
             return Ok(());
@@ -70,14 +76,19 @@ impl TraceCollector {
         }
 
         let locals = copy_locals(frame)?;
-        enforce_snapshot_size(&locals)?;
+        let return_value = return_value(event, arg)?;
+        enforce_snapshot_size(&locals, &return_value)?;
+        let line = frame.getattr("f_lineno")?.extract()?;
 
         self.frames.push(TraceFrame {
             step: self.frames.len(),
-            line: frame.getattr("f_lineno")?.extract()?,
+            event: event.to_owned(),
+            line,
+            line_text: self.line_text(line),
             scope_name: scope_name(frame)?,
             call_depth: call_depth(frame, &self.target_filename)?,
             locals,
+            return_value,
         });
 
         Ok(())
@@ -90,13 +101,20 @@ impl TraceCollector {
     }
 
     fn should_capture(&self, frame: &Bound<'_, PyAny>, event: &str) -> PyResult<bool> {
-        if event != "line" {
+        if !CAPTURED_EVENTS.contains(&event) {
             return Ok(false);
         }
 
         let code = frame.getattr("f_code")?;
         let filename: String = code.getattr("co_filename")?.extract()?;
         Ok(filename == self.target_filename)
+    }
+
+    fn line_text(&self, line: usize) -> String {
+        self.source_lines
+            .get(line.saturating_sub(1))
+            .map(|source_line| source_line.text.clone())
+            .unwrap_or_default()
     }
 }
 
@@ -155,10 +173,7 @@ fn call_depth(frame: &Bound<'_, PyAny>, target_filename: &str) -> PyResult<usize
 }
 
 fn is_target_frame(frame: &Bound<'_, PyAny>, target_filename: &str) -> PyResult<bool> {
-    let filename: String = frame
-        .getattr("f_code")?
-        .getattr("co_filename")?
-        .extract()?;
+    let filename: String = frame.getattr("f_code")?.getattr("co_filename")?.extract()?;
     Ok(filename == target_filename)
 }
 
@@ -171,18 +186,30 @@ fn visualizable_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
 
 fn unsupported_value(value: &Bound<'_, PyAny>, error: &PyErr) -> PyResult<Value> {
     let type_name = value.get_type().name()?.to_string();
-    Ok(Value::String(format!(
-        "<unsupported {type_name}: {error}>"
-    )))
+    Ok(Value::String(format!("<unsupported {type_name}: {error}>")))
 }
 
-fn enforce_snapshot_size(locals: &BTreeMap<String, Value>) -> PyResult<()> {
+fn return_value(event: &str, arg: &Bound<'_, PyAny>) -> PyResult<Option<Value>> {
+    if event != "return" {
+        return Ok(None);
+    }
+
+    Ok(Some(visualizable_value(arg)?))
+}
+
+fn enforce_snapshot_size(
+    locals: &BTreeMap<String, Value>,
+    return_value: &Option<Value>,
+) -> PyResult<()> {
     let Some(limit) = snapshot_byte_limit()? else {
         return Ok(());
     };
-    let bytes = serde_json::to_vec(locals)
-        .map_err(|error| PyRuntimeError::new_err(error.to_string()))?
-        .len();
+    let bytes = serde_json::to_vec(&TraceSnapshot {
+        locals,
+        return_value,
+    })
+    .map_err(|error| PyRuntimeError::new_err(error.to_string()))?
+    .len();
 
     if bytes <= limit {
         return Ok(());
@@ -191,6 +218,12 @@ fn enforce_snapshot_size(locals: &BTreeMap<String, Value>) -> PyResult<()> {
     Err(PyRuntimeError::new_err(format!(
         "Trace local snapshot exceeded {limit} bytes: {bytes} bytes"
     )))
+}
+
+#[derive(Serialize)]
+struct TraceSnapshot<'a> {
+    locals: &'a BTreeMap<String, Value>,
+    return_value: &'a Option<Value>,
 }
 
 fn snapshot_byte_limit() -> PyResult<Option<usize>> {

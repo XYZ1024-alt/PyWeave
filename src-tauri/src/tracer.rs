@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::env;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
@@ -9,6 +10,8 @@ use serde_json::Value;
 use crate::python_value::to_json_value;
 
 pub const MAX_TRACE_EVENTS: usize = 1000;
+const DEFAULT_MAX_SNAPSHOT_BYTES: usize = 262_144;
+const SNAPSHOT_LIMIT_ENV: &str = "PYWEAVE_MAX_SNAPSHOT_BYTES";
 
 #[derive(Clone, Debug, Serialize)]
 pub struct TraceEvent {
@@ -48,9 +51,12 @@ impl TraceCollector {
             )));
         }
 
+        let locals = copy_locals(frame)?;
+        enforce_snapshot_size(&locals)?;
+
         self.events.push(TraceEvent {
             line: frame.getattr("f_lineno")?.extract()?,
-            locals: copy_locals(frame)?,
+            locals,
         });
 
         Ok(())
@@ -87,11 +93,57 @@ fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
             continue;
         }
 
-        let copied = deepcopy.call1((&value,))?;
-        output.insert(name, to_json_value(&copied)?);
+        let visualized = match deepcopy.call1((&value,)) {
+            Ok(copied) => visualizable_value(&copied)?,
+            Err(error) => unsupported_value(&value, &error)?,
+        };
+        output.insert(name, visualized);
     }
 
     Ok(output)
+}
+
+fn visualizable_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
+    match to_json_value(value) {
+        Ok(json) => Ok(json),
+        Err(error) => unsupported_value(value, &error),
+    }
+}
+
+fn unsupported_value(value: &Bound<'_, PyAny>, error: &PyErr) -> PyResult<Value> {
+    let type_name = value.get_type().name()?.to_string();
+    Ok(Value::String(format!(
+        "<unsupported {type_name}: {error}>"
+    )))
+}
+
+fn enforce_snapshot_size(locals: &BTreeMap<String, Value>) -> PyResult<()> {
+    let Some(limit) = snapshot_byte_limit()? else {
+        return Ok(());
+    };
+    let bytes = serde_json::to_vec(locals)
+        .map_err(|error| PyRuntimeError::new_err(error.to_string()))?
+        .len();
+
+    if bytes <= limit {
+        return Ok(());
+    }
+
+    Err(PyRuntimeError::new_err(format!(
+        "Trace local snapshot exceeded {limit} bytes: {bytes} bytes"
+    )))
+}
+
+fn snapshot_byte_limit() -> PyResult<Option<usize>> {
+    let Ok(value) = env::var(SNAPSHOT_LIMIT_ENV) else {
+        return Ok(Some(DEFAULT_MAX_SNAPSHOT_BYTES));
+    };
+
+    let limit = value.parse::<usize>().map_err(|error| {
+        PyRuntimeError::new_err(format!("{SNAPSHOT_LIMIT_ENV} must be an integer: {error}"))
+    })?;
+
+    Ok((limit > 0).then_some(limit))
 }
 
 fn should_skip_local(name: &str, value: &Bound<'_, PyAny>) -> PyResult<bool> {

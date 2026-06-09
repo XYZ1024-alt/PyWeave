@@ -1,4 +1,5 @@
 mod error;
+mod python_policy;
 mod python_runner;
 mod python_value;
 mod tracer;
@@ -43,6 +44,16 @@ mod tests {
         assert_eq!(error.kind, "IndexError");
         assert_eq!(error.line, Some(2));
         assert!(error.message.contains("list index out of range"));
+    }
+
+    #[test]
+    fn command_formats_policy_error_line() {
+        let source = "items = [1]\nimport os\n";
+        let error = trace_sort_algorithm(source.to_owned()).unwrap_err();
+
+        assert_eq!(error.kind, "ValueError");
+        assert_eq!(error.line, Some(2));
+        assert!(error.message.contains("PyWeave policy rejected line 2"));
     }
 
     #[test]

@@ -4,6 +4,7 @@ use pyo3::types::{PyAnyMethods, PyTracebackMethods, PyTypeMethods};
 use serde::Serialize;
 
 const TRACE_FILE_MARKER: &str = "File \"<pyweave_algorithm>\", line ";
+const POLICY_LINE_MARKER: &str = "PyWeave policy rejected line ";
 
 #[derive(Debug, Serialize)]
 pub struct TraceExecutionError {
@@ -15,8 +16,10 @@ pub struct TraceExecutionError {
 impl TraceExecutionError {
     pub fn from_py_err(py: Python<'_>, error: PyErr) -> Self {
         let kind = error_kind(py, &error);
-        let line = syntax_line(error.value(py)).or_else(|| traceback_line(py, &error));
         let message = error_message(py, &error);
+        let line = syntax_line(error.value(py))
+            .or_else(|| traceback_line(py, &error))
+            .or_else(|| policy_line(&message));
 
         Self {
             kind,
@@ -54,6 +57,16 @@ fn traceback_line(py: Python<'_>, error: &PyErr) -> Option<usize> {
 fn parse_trace_line(line: &str) -> Option<usize> {
     let start = line.find(TRACE_FILE_MARKER)? + TRACE_FILE_MARKER.len();
     let tail = &line[start..];
+    let digits: String = tail
+        .chars()
+        .take_while(|char| char.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
+}
+
+fn policy_line(message: &str) -> Option<usize> {
+    let start = message.find(POLICY_LINE_MARKER)? + POLICY_LINE_MARKER.len();
+    let tail = &message[start..];
     let digits: String = tail
         .chars()
         .take_while(|char| char.is_ascii_digit())

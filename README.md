@@ -39,6 +39,22 @@ backend with PyO3 to execute Python code and collect line-by-line trace data.
 Python must be available on the machine because PyWeave executes user-provided
 Python code through the native Tauri backend.
 
+## Security Model
+
+PyWeave runs Python locally for algorithm visualization. By default, the backend
+accepts a restricted Python subset: basic control flow, functions, indexing,
+literals and a small set of safe builtins such as `len`, `range`, `list`,
+`min`, `max`, `sum` and `sorted`. Imports, attribute access, classes, lambdas
+and indirect calls are rejected with an explicit line-numbered error.
+
+Set `PYWEAVE_ALLOW_UNRESTRICTED_PYTHON=1` only for trusted local code when full
+Python execution is required. Unrestricted mode gives code the same host access
+as the desktop process.
+
+Trace capture is bounded by `MAX_TRACE_EVENTS` in the backend and by a local
+snapshot byte limit. Set `PYWEAVE_MAX_SNAPSHOT_BYTES=0` to disable the snapshot
+size limit for trusted local experiments.
+
 ## Install
 
 ```bash

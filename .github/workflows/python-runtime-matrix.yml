@@ -47,6 +47,12 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: windows-python-${{ matrix.python-version }}
+
       - name: Verify selected Python runtime
         shell: pwsh
         run: |
@@ -60,6 +66,9 @@ jobs:
 
       - name: Build frontend assets
         run: npm run build
+
+      - name: Compile Rust test binaries
+        run: cargo test --manifest-path src-tauri/Cargo.toml --no-run
 
       - name: Test Rust backend
         run: npm run test:backend

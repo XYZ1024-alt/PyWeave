@@ -3,6 +3,10 @@ import { isSequencePreview, sequencePreviewCell } from "./valuePreview";
 import type { PreviewCell, SequencePreview } from "./valuePreview";
 
 const ARRAY_NODE_SPACING = 80;
+const ARRAY_NODE_WIDTH = 64;
+const ARRAY_NODE_HEIGHT = 72;
+const LABEL_NODE_WIDTH = 140;
+const LABEL_NODE_HEIGHT = 44;
 const ROW_HEIGHT = 112;
 const LEFT_OFFSET = 48;
 const TOP_OFFSET = 42;
@@ -120,6 +124,8 @@ function createArrayValueNode(
     id: arrayNodeId(options.variable, item.index),
     type: "arrayValue" as const,
     position: arrayPosition(options.row, slot),
+    width: ARRAY_NODE_WIDTH,
+    height: ARRAY_NODE_HEIGHT,
     data: {
       variable: options.variable,
       index: item.index,
@@ -141,6 +147,8 @@ function createArrayGapNode(options: {
     id: `${options.variable}-gap-${options.item.rangeStart}-${options.item.rangeEnd}`,
     type: "arrayGap" as const,
     position: arrayPosition(options.row, options.slot),
+    width: ARRAY_NODE_WIDTH,
+    height: ARRAY_NODE_HEIGHT,
     data: {
       variable: options.variable,
       hiddenCount: options.item.hiddenCount,
@@ -259,6 +267,8 @@ function createLabelNode(
       id: variable,
       type: "labelValue" as const,
       position: { x: LEFT_OFFSET, y: TOP_OFFSET + row * ROW_HEIGHT },
+      width: LABEL_NODE_WIDTH,
+      height: LABEL_NODE_HEIGHT,
       data: {
         variable,
         value,

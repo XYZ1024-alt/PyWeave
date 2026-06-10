@@ -529,6 +529,14 @@ input:focus-visible {
   transition: transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+.react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid #b7c0ca;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(29, 36, 43, 0.12);
+}
+
 @keyframes value-flash-even {
   0% {
     background: #ffe2d8;

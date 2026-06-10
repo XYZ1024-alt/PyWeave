@@ -57,6 +57,7 @@ test("renders the teaching visualization and English locale", async ({ page }) =
 
   await expect(page.getByRole("heading", { name: "建立初始状态" })).toBeVisible();
   await expect(page.locator(".array-node")).toHaveCount(5);
+  await expect(page.locator(".react-flow__minimap-node")).toHaveCount(5);
   await expect(page.locator(".array-node").first()).toContainText("3");
   await expect(page.locator(".monaco-editor")).toBeVisible();
   await expect(page.locator('.editor-shell[data-current-line="3"]')).toBeVisible();

@@ -53,6 +53,13 @@ type FlowPaneProps = {
   readonly onStepChange: (step: number) => void;
 };
 
+const MINI_MAP_ARRAY_COLOR = "#2a7f9f";
+const MINI_MAP_GAP_COLOR = "#9aa6b2";
+const MINI_MAP_LABEL_COLOR = "#d9a441";
+const MINI_MAP_STROKE_COLOR = "#17384a";
+const MINI_MAP_BACKGROUND = "#ffffff";
+const MINI_MAP_MASK_COLOR = "rgba(29, 36, 43, 0.12)";
+
 export function SourcePane(props: SourcePaneProps) {
   return (
     <section className="source-pane" aria-label="Python source">
@@ -321,11 +328,30 @@ function FlowStage({
       <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView nodesDraggable={false}>
         <ViewportSync revision={revision} />
         <Background gap={32} size={1.4} />
-        <MiniMap pannable zoomable />
+        <MiniMap
+          bgColor={MINI_MAP_BACKGROUND}
+          maskColor={MINI_MAP_MASK_COLOR}
+          nodeColor={miniMapNodeColor}
+          nodeStrokeColor={MINI_MAP_STROKE_COLOR}
+          pannable
+          zoomable
+        />
         <Controls />
       </ReactFlow>
     </div>
   );
+}
+
+function miniMapNodeColor(node: FlowNode): string {
+  if (node.type === "arrayGap") {
+    return MINI_MAP_GAP_COLOR;
+  }
+
+  if (node.type === "labelValue") {
+    return MINI_MAP_LABEL_COLOR;
+  }
+
+  return MINI_MAP_ARRAY_COLOR;
 }
 
 function ViewportSync({ revision }: { readonly revision: number }) {

@@ -5,6 +5,10 @@ Monaco-based Python editor with a React Flow variable graph, then uses a Tauri
 backend with PyO3 to collect line-by-line trace data in an isolated worker
 process.
 
+![alt text](image.png)
+
+![alt text](image-1.png)
+
 ## Features
 
 - Edit and run Python code inside the app.

@@ -1,0 +1,94 @@
+name: Python Runtime Matrix
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-python-runtime:
+    name: Windows Python ${{ matrix.python-version }}
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.11"
+          - "3.12"
+          - "3.13"
+
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          architecture: x64
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify selected Python runtime
+        shell: pwsh
+        run: |
+          python --version
+          where.exe python
+          where.exe python3.dll
+          python -c "import platform, sys; print(sys.version); print(platform.architecture()[0])"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend assets
+        run: npm run build
+
+      - name: Test Rust backend
+        run: npm run test:backend
+
+      - name: Build release executable
+        run: cargo build --release --manifest-path src-tauri/Cargo.toml
+
+      - name: Smoke test trace worker
+        shell: pwsh
+        run: |
+          $request = '{"pythonCode":"items = [1, 2, 3]\ntotal = sum(items)\n"}'
+          $output = $request | & .\src-tauri\target\release\pyweave-tauri.exe --pyweave-trace-worker
+
+          if ($LASTEXITCODE -ne 0) {
+            throw "trace worker exited with code $LASTEXITCODE"
+          }
+
+          $response = $output | ConvertFrom-Json
+
+          if ($response.status -ne "ok") {
+            throw "trace worker returned status $($response.status): $($response.payload.message)"
+          }
+
+          if ($response.payload.frames.Count -eq 0) {
+            throw "trace worker returned no frames"
+          }
+
+          $lastFrame = $response.payload.frames[-1]
+
+          if ($lastFrame.locals.total -ne 6) {
+            throw "expected total to be 6, got $($lastFrame.locals.total)"
+          }

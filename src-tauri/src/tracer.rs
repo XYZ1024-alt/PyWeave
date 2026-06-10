@@ -3,7 +3,7 @@ use std::env;
 
 use pyo3::exceptions::PyRuntimeError;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::PyTuple;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -131,12 +131,11 @@ pub fn source_lines(source: &str) -> Vec<SourceLine> {
 
 fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
     let locals = frame.getattr("f_locals")?;
-    let dict = locals.cast::<PyDict>()?;
     let limits = ValueConversionLimits::from_environment()?;
     let mut output = BTreeMap::new();
 
-    for (key, value) in dict.iter() {
-        let name = key.extract::<String>()?;
+    for item in locals.call_method0("items")?.try_iter()? {
+        let (name, value) = local_item(item?)?;
 
         if should_skip_local(&name, &value)? {
             continue;
@@ -147,6 +146,14 @@ fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
     }
 
     Ok(output)
+}
+
+fn local_item(item: Bound<'_, PyAny>) -> PyResult<(String, Bound<'_, PyAny>)> {
+    let pair = item.cast::<PyTuple>()?;
+    let key = pair.get_item(0)?;
+    let value = pair.get_item(1)?;
+
+    Ok((key.extract()?, value))
 }
 
 fn scope_name(frame: &Bound<'_, PyAny>) -> PyResult<String> {

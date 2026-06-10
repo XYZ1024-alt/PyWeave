@@ -277,7 +277,10 @@ fn read_output_file(path: &PathBuf) -> Result<String, TraceExecutionError> {
 
 fn report_cleanup_error(result: io::Result<()>, path: &PathBuf) {
     if let Err(error) = result {
-        eprintln!("failed to remove trace worker file {}: {error}", path.display());
+        eprintln!(
+            "failed to remove trace worker file {}: {error}",
+            path.display()
+        );
     }
 }
 

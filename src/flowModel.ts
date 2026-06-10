@@ -1,4 +1,6 @@
 import type { FlowEdge, FlowNode, JsonObject, JsonValue, VariableChange } from "./types";
+import { isSequencePreview, sequencePreviewCell } from "./valuePreview";
+import type { PreviewCell, SequencePreview } from "./valuePreview";
 
 const ARRAY_NODE_SPACING = 80;
 const ROW_HEIGHT = 112;
@@ -28,15 +30,18 @@ type FlowModel = {
   readonly changes: VariableChange[];
 };
 
+type ArrayLikeValue = readonly JsonValue[] | SequencePreview;
+
 type ArrayEntry = {
   readonly variable: string;
-  readonly values: readonly JsonValue[];
+  readonly values: ArrayLikeValue;
   readonly row: number;
 };
 
 type VisibleArrayCell = {
   readonly kind: "cell";
   readonly index: number;
+  readonly known: boolean;
   readonly value: JsonValue;
 };
 
@@ -59,7 +64,7 @@ export function createFlowModel(
   const targetArray = selectTargetArray(arrays);
   const pointers = targetArray ? collectPointers(current, targetArray) : new Map<number, string[]>();
   const nodes = entries.flatMap(([variable, value], row) =>
-    Array.isArray(value)
+    isArrayLikeValue(value)
       ? createArrayNodes({ variable, values: value, previous, row, revision, pointers })
       : createLabelNode(variable, value, previous, row),
   );
@@ -73,20 +78,20 @@ export function createFlowModel(
 
 function orderEntries(entries: readonly [string, JsonValue][]): [string, JsonValue][] {
   return [
-    ...entries.filter(([, value]) => Array.isArray(value)),
-    ...entries.filter(([, value]) => !Array.isArray(value)),
+    ...entries.filter(([, value]) => isArrayLikeValue(value)),
+    ...entries.filter(([, value]) => !isArrayLikeValue(value)),
   ];
 }
 
 function collectArrays(entries: readonly [string, JsonValue][]): ArrayEntry[] {
   return entries.flatMap(([variable, value], row) =>
-    Array.isArray(value) ? [{ variable, values: value, row }] : [],
+    isArrayLikeValue(value) ? [{ variable, values: value, row }] : [],
   );
 }
 
 function createArrayNodes(options: {
   readonly variable: string;
-  readonly values: readonly JsonValue[];
+  readonly values: ArrayLikeValue;
   readonly previous: JsonObject | undefined;
   readonly row: number;
   readonly revision: number;
@@ -102,7 +107,7 @@ function createArrayNodes(options: {
 function createArrayValueNode(
   options: {
     readonly variable: string;
-    readonly values: readonly JsonValue[];
+    readonly values: ArrayLikeValue;
     readonly previous: JsonObject | undefined;
     readonly row: number;
     readonly revision: number;
@@ -121,7 +126,7 @@ function createArrayValueNode(
       pointers: options.pointers.get(item.index) ?? [],
       value: item.value,
       revision: options.revision,
-      changed: didArrayValueChange(options.previous?.[options.variable], item.value, item.index),
+      changed: didArrayValueChange(options.previous?.[options.variable], item),
     },
   };
 }
@@ -153,14 +158,16 @@ function arrayPosition(row: number, slot: number) {
 }
 
 function visibleArrayItems(
-  values: readonly JsonValue[],
+  values: ArrayLikeValue,
   pointers: ReadonlyMap<number, readonly string[]>,
 ): VisibleArrayItem[] {
-  if (values.length <= MAX_VISIBLE_ARRAY_CELLS) {
-    return values.map((value, index) => ({ kind: "cell", index, value }));
+  const length = arrayLength(values);
+
+  if (length <= MAX_VISIBLE_ARRAY_CELLS) {
+    return Array.from({ length }, (_, index) => visibleArrayCell(values, index));
   }
 
-  return insertArrayGaps(visibleArrayIndexes(values.length, pointers), values);
+  return insertArrayGaps(visibleArrayIndexes(length, pointers), values);
 }
 
 function visibleArrayIndexes(
@@ -187,14 +194,14 @@ function addIndexRange(indexes: Set<number>, start: number, end: number) {
 
 function insertArrayGaps(
   indexes: readonly number[],
-  values: readonly JsonValue[],
+  values: ArrayLikeValue,
 ): VisibleArrayItem[] {
   let previousIndex = -1;
   const items: VisibleArrayItem[] = [];
 
   for (const index of indexes) {
     items.push(...arrayGap(previousIndex + 1, index - 1));
-    items.push({ kind: "cell", index, value: values[index] });
+    items.push(visibleArrayCell(values, index));
     previousIndex = index;
   }
 
@@ -212,6 +219,33 @@ function arrayGap(rangeStart: number, rangeEnd: number): VisibleArrayGap[] {
     rangeStart,
     rangeEnd,
   }];
+}
+
+function visibleArrayCell(values: ArrayLikeValue, index: number): VisibleArrayCell {
+  const cell = arrayCell(values, index);
+
+  return {
+    kind: "cell",
+    index,
+    known: cell.known,
+    value: cell.value,
+  };
+}
+
+function arrayCell(values: ArrayLikeValue, index: number): PreviewCell {
+  if (isSequencePreview(values)) {
+    return sequencePreviewCell(values, index);
+  }
+
+  return { known: index in values, value: values[index] };
+}
+
+function arrayLength(values: ArrayLikeValue): number {
+  return values.length;
+}
+
+function isArrayLikeValue(value: JsonValue): value is ArrayLikeValue {
+  return Array.isArray(value) || isSequencePreview(value);
 }
 
 function createLabelNode(
@@ -257,7 +291,7 @@ function selectTargetArray(arrays: readonly ArrayEntry[]): ArrayEntry | undefine
 function isPointer(
   variable: string,
   value: JsonValue,
-  targetValues: readonly JsonValue[],
+  targetValues: ArrayLikeValue,
 ): boolean {
   if (!POINTER_VARIABLES.has(variable) || typeof value !== "number") {
     return false;
@@ -267,15 +301,20 @@ function isPointer(
     return false;
   }
 
-  return value >= 0 && value < targetValues.length;
+  return value >= 0 && value < arrayLength(targetValues);
 }
 
 function didArrayValueChange(
   previousValue: JsonValue | undefined,
-  currentValue: JsonValue,
-  index: number,
+  currentCell: VisibleArrayCell,
 ): boolean {
-  return Array.isArray(previousValue) && previousValue[index] !== currentValue;
+  if (!currentCell.known || !previousValue || !isArrayLikeValue(previousValue)) {
+    return false;
+  }
+
+  const previousCell = arrayCell(previousValue, currentCell.index);
+
+  return previousCell.known && !jsonValuesEqual(previousCell.value, currentCell.value);
 }
 
 function arrayNodeId(variable: string, index: number): string {
@@ -323,5 +362,43 @@ function variableChange(
 }
 
 function jsonValuesEqual(left: JsonValue | undefined, right: JsonValue | undefined): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  if (left === right) {
+    return true;
+  }
+
+  if (left === undefined || right === undefined) {
+    return false;
+  }
+
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return arraysEqual(left, right);
+  }
+
+  if (isJsonObject(left) && isJsonObject(right)) {
+    return objectsEqual(left, right);
+  }
+
+  return false;
+}
+
+function arraysEqual(left: readonly JsonValue[], right: readonly JsonValue[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((value, index) => jsonValuesEqual(value, right[index]));
+}
+
+function objectsEqual(left: JsonObject, right: JsonObject): boolean {
+  const leftKeys = Object.keys(left);
+
+  if (leftKeys.length !== Object.keys(right).length) {
+    return false;
+  }
+
+  return leftKeys.every((key) => key in right && jsonValuesEqual(left[key], right[key]));
+}
+
+function isJsonObject(value: JsonValue): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

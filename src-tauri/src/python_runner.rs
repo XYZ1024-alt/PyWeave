@@ -221,20 +221,22 @@ boom = items[3]
     }
 
     #[test]
-    fn stops_when_trace_snapshot_is_too_large() {
+    fn summarizes_large_snapshots_without_stopping() {
         let source = r#"
 items = list(range(100000))
 done = len(items)
 "#;
 
-        let error = run_python_trace(source).expect_err("large snapshots should stop execution");
-        Python::attach(|py| {
-            assert_eq!(
-                error.get_type(py).name().unwrap().to_string(),
-                "RuntimeError"
-            );
-            assert!(error.to_string().contains("Trace local snapshot exceeded"));
-        });
+        let trace_run = run_python_trace(source).expect("large snapshots should be summarized");
+        let preview = trace_run
+            .frames
+            .iter()
+            .find_map(|event| event.locals.get("items"))
+            .and_then(|value| value.as_object())
+            .expect("items should be represented as a preview object");
+
+        assert_eq!(preview.get("__pyweavePreview"), Some(&json!("sequence")));
+        assert_eq!(preview.get("length"), Some(&json!(100000)));
     }
 
     #[test]

@@ -78,7 +78,7 @@ export const CUSTOM_TEMPLATE: AlgorithmTemplate = template({
   id: "custom-code",
   name: localized("自定义代码", "Custom Code"),
   description: localized(
-    "使用 items、i、j、left、right 这类变量名可以获得更清晰的指针可视化。",
+    "使用 items、i、j、left、right 等变量名可以获得更清晰的指针可视化。",
     "Use names like items, i, j, left and right for clearer pointer visualization.",
   ),
   source: CUSTOM_SOURCE,

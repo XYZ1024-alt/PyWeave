@@ -30,11 +30,56 @@ const SAFE_BUILTIN_NAMES: &[&str] = &[
     "zip",
 ];
 const ALLOWED_NODE_KINDS: &[&str] = &[
-    "Add", "And", "AnnAssign", "Assign", "AugAssign", "BinOp", "BoolOp", "Break", "Call",
-    "Compare", "Constant", "Continue", "Dict", "Div", "Eq", "Expr", "FloorDiv", "For",
-    "FunctionDef", "Gt", "GtE", "If", "In", "Is", "IsNot", "List", "Load", "Lt", "LtE",
-    "Mod", "Module", "Mult", "Name", "Not", "NotEq", "NotIn", "Or", "Pass", "Pow", "Return",
-    "Slice", "Store", "Sub", "Subscript", "Tuple", "UAdd", "USub", "UnaryOp", "While", "arg",
+    "Add",
+    "And",
+    "AnnAssign",
+    "Assign",
+    "AugAssign",
+    "BinOp",
+    "BoolOp",
+    "Break",
+    "Call",
+    "Compare",
+    "Constant",
+    "Continue",
+    "Dict",
+    "Div",
+    "Eq",
+    "Expr",
+    "FloorDiv",
+    "For",
+    "FunctionDef",
+    "Gt",
+    "GtE",
+    "If",
+    "In",
+    "Is",
+    "IsNot",
+    "List",
+    "Load",
+    "Lt",
+    "LtE",
+    "Mod",
+    "Module",
+    "Mult",
+    "Name",
+    "Not",
+    "NotEq",
+    "NotIn",
+    "Or",
+    "Pass",
+    "Pow",
+    "Return",
+    "Slice",
+    "Store",
+    "Sub",
+    "Subscript",
+    "Tuple",
+    "UAdd",
+    "USub",
+    "UnaryOp",
+    "While",
+    "arg",
     "arguments",
 ];
 pub const UNRESTRICTED_PYTHON_ENV: &str = "PYWEAVE_ALLOW_UNRESTRICTED_PYTHON";
@@ -79,10 +124,7 @@ fn safe_builtins(py: Python<'_>) -> PyResult<Bound<'_, PyDict>> {
     Ok(output)
 }
 
-fn collect_function_names(
-    py: Python<'_>,
-    tree: &Bound<'_, PyAny>,
-) -> PyResult<BTreeSet<String>> {
+fn collect_function_names(py: Python<'_>, tree: &Bound<'_, PyAny>) -> PyResult<BTreeSet<String>> {
     let mut names = BTreeSet::new();
 
     for node in ast_nodes(py, tree)? {
@@ -117,7 +159,10 @@ fn validate_node(
     let kind = node_kind(node)?;
 
     if !allowed_nodes.contains(kind.as_str()) {
-        return policy_error(node, format!("{kind} is not available in the PyWeave subset"));
+        return policy_error(
+            node,
+            format!("{kind} is not available in the PyWeave subset"),
+        );
     }
 
     match kind.as_str() {
@@ -154,11 +199,11 @@ fn validate_identifier(node: &Bound<'_, PyAny>, attribute: &str) -> PyResult<()>
     Ok(())
 }
 
-fn ast_nodes<'py>(
-    py: Python<'py>,
-    tree: &Bound<'py, PyAny>,
-) -> PyResult<Bound<'py, PyIterator>> {
-    py.import("ast")?.getattr("walk")?.call1((tree,))?.try_iter()
+fn ast_nodes<'py>(py: Python<'py>, tree: &Bound<'py, PyAny>) -> PyResult<Bound<'py, PyIterator>> {
+    py.import("ast")?
+        .getattr("walk")?
+        .call1((tree,))?
+        .try_iter()
 }
 
 fn node_kind(node: &Bound<'_, PyAny>) -> PyResult<String> {

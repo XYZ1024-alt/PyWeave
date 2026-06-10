@@ -39,4 +39,25 @@ describe("createFlowModel", () => {
     expect((pointerNode?.data as ArrayNodeData | undefined)?.pointers).toEqual(["mid"]);
     expect(model.nodes.length).toBeLessThan(items.length);
   });
+
+  it("visualizes backend sequence previews without expanding the full array", () => {
+    const previewLength = 1_000;
+    const pointerIndex = 500;
+    const items = {
+      __pyweavePreview: "sequence",
+      typeName: "list",
+      length: previewLength,
+      head: [0, 1],
+      tailStart: 999,
+      tail: [999],
+      truncated: true,
+    } as const;
+    const model = createFlowModel({ items, mid: pointerIndex }, undefined, 1);
+    const pointerNode = model.nodes.find((node) => node.id === `items-${pointerIndex}`);
+    const pointerData = pointerNode?.data as ArrayNodeData | undefined;
+
+    expect(model.nodes.length).toBeLessThan(items.length);
+    expect(pointerData?.pointers).toEqual(["mid"]);
+    expect(pointerData?.value).toBe("<not captured in preview>");
+  });
 });

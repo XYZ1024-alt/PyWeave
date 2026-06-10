@@ -10,9 +10,11 @@ process.
 - Edit and run Python code inside the app.
 - Visualize Python locals as variable and array nodes.
 - See pointer labels directly on array cells.
+- Keep large lists, tuples and dictionaries responsive through explicit previews.
 - Step through captured execution states.
-- Review localized step guidance, current line context and variable changes.
+- Review localized step guidance, trace summaries, current line context and variable changes.
 - Play, pause and change playback speed.
+- Run the current editor with `Ctrl+Enter`.
 - Switch the UI between Chinese and English.
 - Start from built-in templates:
   - Custom Code
@@ -62,8 +64,11 @@ Python execution is required. Unrestricted mode gives code the same host access
 as the desktop process.
 
 Trace capture is bounded by `MAX_TRACE_EVENTS` in the backend and by a local
-snapshot byte limit. Set `PYWEAVE_MAX_SNAPSHOT_BYTES=0` to disable the snapshot
-size limit for trusted local experiments.
+snapshot byte limit. Large lists, tuples and dictionaries are serialized as
+explicit preview objects after `PYWEAVE_VALUE_PREVIEW_ITEMS=96` captured items.
+Set `PYWEAVE_VALUE_PREVIEW_ITEMS=0` to disable value previews for trusted local
+debugging. Set `PYWEAVE_MAX_SNAPSHOT_BYTES=0` to disable the snapshot size limit
+for trusted local experiments.
 
 Trace worker execution uses `PYWEAVE_TRACE_TIMEOUT_MS=5000` by default. Set it
 to another positive integer to change the timeout, or `0` to disable the timeout
@@ -76,6 +81,12 @@ npm install
 ```
 
 ## Development
+
+Check local desktop prerequisites:
+
+```bash
+npm run doctor
+```
 
 Run the Tauri desktop app in development mode:
 

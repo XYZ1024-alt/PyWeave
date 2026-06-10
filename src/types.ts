@@ -1,6 +1,6 @@
 import type { Edge, Node } from "@xyflow/react";
 
-export type JsonValue = null | boolean | number | string | JsonValue[] | JsonObject;
+export type JsonValue = null | boolean | number | string | readonly JsonValue[] | JsonObject;
 export type JsonObject = { readonly [key: string]: JsonValue };
 
 export type Locale = "zh" | "en";

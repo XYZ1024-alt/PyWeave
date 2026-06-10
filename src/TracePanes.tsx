@@ -9,6 +9,7 @@ import { PythonEditor } from "./PythonEditor";
 import { TemplatePicker } from "./TemplatePicker";
 import type { TeachingNote } from "./teaching";
 import type { AlgorithmTemplate } from "./templates";
+import { traceStepSemantics } from "./traceSemantics";
 import type {
   FlowEdge,
   FlowNode,
@@ -82,11 +83,7 @@ export function FlowPane(props: FlowPaneProps) {
     <section className="flow-pane" aria-label="Algorithm playback">
       <FlowHeader {...props} />
       <div className="visualization-shell">
-        {props.error ? (
-          <ErrorPanel error={props.error} locale={props.locale} sourceLines={props.sourceLines} />
-        ) : (
-          <FlowStage nodes={props.nodes} edges={props.edges} revision={props.currentStep} />
-        )}
+        <FlowContent {...props} />
         <TeachingSidebar {...props} />
       </div>
       <PlayerControls
@@ -100,6 +97,30 @@ export function FlowPane(props: FlowPaneProps) {
         onStepChange={props.onStepChange}
       />
     </section>
+  );
+}
+
+function FlowContent(props: FlowPaneProps) {
+  if (props.error) {
+    return <ErrorPanel error={props.error} locale={props.locale} sourceLines={props.sourceLines} />;
+  }
+
+  if (props.running && props.nodes.length === 0) {
+    return <FlowStatusCard message={ui("loadingTrace", props.locale)} />;
+  }
+
+  if (!props.frame) {
+    return <FlowStatusCard message={ui("noTrace", props.locale)} />;
+  }
+
+  return <FlowStage nodes={props.nodes} edges={props.edges} revision={props.currentStep} />;
+}
+
+function FlowStatusCard({ message }: { readonly message: string }) {
+  return (
+    <div className="flow-status-card" role="status">
+      {message}
+    </div>
   );
 }
 
@@ -153,6 +174,11 @@ function TeachingSidebar(props: FlowPaneProps) {
 
 function StepGuide(props: FlowPaneProps) {
   const sourceLine = sourceLineForFrame(props.sourceLines, props.frame);
+  const semantics = traceStepSemantics({
+    changes: props.changes,
+    frame: props.frame,
+    locale: props.locale,
+  });
 
   return (
     <section className="sidebar-section">
@@ -162,9 +188,11 @@ function StepGuide(props: FlowPaneProps) {
         <span>{ui("event", props.locale)} {traceEventLabel(props.frame, props.locale)}</span>
         <span>{ui("currentScope", props.locale)} {props.frame?.scopeName ?? "-"}</span>
         <span>{ui("callDepth", props.locale)} {props.frame?.callDepth ?? "-"}</span>
+        <span>{ui("updatedVariables", props.locale)} {semantics.updatedVariables}</span>
       </div>
       <h3>{props.teachingNote.title}</h3>
       <p>{props.teachingNote.summary}</p>
+      <p className="trace-summary">{ui("traceSummary", props.locale)}：{semantics.summary}</p>
       {sourceLine ? <code className="current-line-preview">{sourceLine.text}</code> : null}
     </section>
   );
@@ -188,9 +216,25 @@ function ErrorPanel({
         <ErrorDetail label={ui("errorKind", locale)} value={error.kind} />
         <ErrorDetail label={ui("errorLine", locale)} value={error.line ?? "-"} />
         <ErrorDetail label={ui("errorMessage", locale)} value={error.message} />
+        <ErrorDetail label={ui("errorHint", locale)} value={errorHint(error, locale)} />
       </dl>
-      {sourceLine ? <code className="current-line-preview">{sourceLine.text}</code> : null}
+      {sourceLine ? <ErrorSourceLine line={sourceLine.text} locale={locale} /> : null}
     </section>
+  );
+}
+
+function ErrorSourceLine({
+  line,
+  locale,
+}: {
+  readonly line: string;
+  readonly locale: Locale;
+}) {
+  return (
+    <>
+      <p className="error-source-label">{ui("errorSourceLine", locale)}</p>
+      <code className="current-line-preview">{line}</code>
+    </>
   );
 }
 
@@ -326,4 +370,26 @@ function traceEventLabel(frame: TraceFrame | undefined, locale: Locale): string 
 
 function formatOptionalValue(value: JsonValue | undefined): string {
   return value === undefined ? "n/a" : formatValue(value);
+}
+
+function errorHint(error: TraceDisplayError, locale: Locale): string {
+  if (error.kind === "SyntaxError") {
+    return locale === "zh" ? "检查高亮行附近的 Python 语法。" : "Check the Python syntax near the highlighted line.";
+  }
+
+  if (error.kind === "WorkerTimeout") {
+    return locale === "zh"
+      ? "检查循环终止条件，或显式调整 PYWEAVE_TRACE_TIMEOUT_MS。"
+      : "Check loop termination, or explicitly adjust PYWEAVE_TRACE_TIMEOUT_MS.";
+  }
+
+  if (error.message.includes("PyWeave policy rejected line")) {
+    return locale === "zh"
+      ? "当前代码触发安全策略，错误消息包含被拒绝的语法。"
+      : "The code hit the safety policy; the message names the rejected syntax.";
+  }
+
+  return locale === "zh"
+    ? "查看高亮行的索引、变量值和函数调用。"
+    : "Inspect indexes, variable values and calls on the highlighted line.";
 }

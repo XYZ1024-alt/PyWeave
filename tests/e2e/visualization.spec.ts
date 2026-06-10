@@ -68,6 +68,7 @@ test("renders the teaching visualization and English locale", async ({ page }) =
   await expect(page.getByRole("heading", { name: "遍历并累加" })).toBeVisible();
   await expect(page.locator(".pointer-pill", { hasText: "i" })).toBeVisible();
   await expect(page.locator(".change-row", { hasText: "total" })).toContainText("3");
+  await expect(page.locator(".trace-summary")).toContainText("执行第 8 行，更新 total");
   await expect(page.locator('.editor-shell[data-current-line="8"]')).toBeVisible();
   await expect(page.locator(".current-line-preview")).toContainText("total = total + items[i]");
 

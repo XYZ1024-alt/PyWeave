@@ -7,7 +7,7 @@ use pyo3::types::PyDict;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::python_value::to_json_value;
+use crate::python_value::{ValueConversionLimits, to_json_value_with_limits};
 
 pub const MAX_TRACE_EVENTS: usize = 1000;
 const DEFAULT_MAX_SNAPSHOT_BYTES: usize = 262_144;
@@ -130,10 +130,9 @@ pub fn source_lines(source: &str) -> Vec<SourceLine> {
 }
 
 fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
-    let py = frame.py();
     let locals = frame.getattr("f_locals")?;
-    let deepcopy = py.import("copy")?.getattr("deepcopy")?;
     let dict = locals.cast::<PyDict>()?;
+    let limits = ValueConversionLimits::from_environment()?;
     let mut output = BTreeMap::new();
 
     for (key, value) in dict.iter() {
@@ -143,10 +142,7 @@ fn copy_locals(frame: &Bound<'_, PyAny>) -> PyResult<BTreeMap<String, Value>> {
             continue;
         }
 
-        let visualized = match deepcopy.call1((&value,)) {
-            Ok(copied) => visualizable_value(&copied)?,
-            Err(error) => unsupported_value(&value, &error)?,
-        };
+        let visualized = visualizable_value(&value, &limits)?;
         output.insert(name, visualized);
     }
 
@@ -177,8 +173,8 @@ fn is_target_frame(frame: &Bound<'_, PyAny>, target_filename: &str) -> PyResult<
     Ok(filename == target_filename)
 }
 
-fn visualizable_value(value: &Bound<'_, PyAny>) -> PyResult<Value> {
-    match to_json_value(value) {
+fn visualizable_value(value: &Bound<'_, PyAny>, limits: &ValueConversionLimits) -> PyResult<Value> {
+    match to_json_value_with_limits(value, limits) {
         Ok(json) => Ok(json),
         Err(error) => unsupported_value(value, &error),
     }
@@ -194,7 +190,8 @@ fn return_value(event: &str, arg: &Bound<'_, PyAny>) -> PyResult<Option<Value>> 
         return Ok(None);
     }
 
-    Ok(Some(visualizable_value(arg)?))
+    let limits = ValueConversionLimits::from_environment()?;
+    Ok(Some(visualizable_value(arg, &limits)?))
 }
 
 fn enforce_snapshot_size(

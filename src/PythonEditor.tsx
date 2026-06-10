@@ -24,6 +24,8 @@ export function PythonEditor(props: PythonEditorProps) {
   const editorRef = useRef<MonacoEditor | null>(null);
   const monacoRef = useRef<MonacoApi | null>(null);
   const decorationsRef = useRef<ReturnType<MonacoEditor["createDecorationsCollection"]> | null>(null);
+  const runningRef = useRef(props.isRunning);
+  const runRef = useRef(props.onRun);
 
   useEffect(() => {
     syncCurrentLineDecoration({
@@ -33,6 +35,11 @@ export function PythonEditor(props: PythonEditorProps) {
       monaco: monacoRef.current,
     });
   }, [props.currentLine]);
+
+  useEffect(() => {
+    runningRef.current = props.isRunning;
+    runRef.current = props.onRun;
+  }, [props.isRunning, props.onRun]);
 
   return (
     <div className="editor-shell" data-current-line={props.currentLine ?? ""}>
@@ -49,12 +56,19 @@ export function PythonEditor(props: PythonEditorProps) {
     editorRef.current = editor;
     monacoRef.current = monaco;
     decorationsRef.current = editor.createDecorationsCollection();
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runFromKeyboard);
     syncCurrentLineDecoration({
       currentLine: props.currentLine,
       decorations: decorationsRef.current,
       editor,
       monaco,
     });
+  }
+
+  function runFromKeyboard() {
+    if (!runningRef.current) {
+      runRef.current();
+    }
   }
 }
 
@@ -87,7 +101,7 @@ function EditorActions({
 }: Pick<PythonEditorProps, "isRunning" | "locale" | "onRun">) {
   return (
     <div className="editor-actions">
-      <button type="button" onClick={onRun} disabled={isRunning}>
+      <button type="button" title={ui("runShortcut", locale)} onClick={onRun} disabled={isRunning}>
         {ui("run", locale)}
       </button>
     </div>
@@ -143,4 +157,5 @@ function syncCurrentLineDecoration(options: {
       },
     },
   ]);
+  options.editor.revealLineInCenterIfOutsideViewport(options.currentLine);
 }

@@ -204,6 +204,21 @@ input:focus-visible {
   min-height: 0;
 }
 
+.flow-status-card {
+  align-self: center;
+  justify-self: center;
+  width: min(420px, calc(100% - 48px));
+  padding: 18px 20px;
+  border: 1px solid #c9d0d8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #475563;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  box-shadow: 0 12px 30px rgba(29, 36, 43, 0.1);
+}
+
 .teaching-sidebar {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -240,6 +255,11 @@ input:focus-visible {
   font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
+}
+
+.trace-summary {
+  margin-top: 10px !important;
+  color: #29343d !important;
 }
 
 .step-meta {
@@ -308,6 +328,13 @@ input:focus-visible {
   font-size: 12px;
   font-weight: 750;
   overflow-wrap: anywhere;
+}
+
+.error-source-label {
+  margin: 14px 0 0;
+  color: #8c6b63;
+  font-size: 12px;
+  font-weight: 850;
 }
 
 .variable-inspector {

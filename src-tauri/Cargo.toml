@@ -1,6 +1,6 @@
 [package]
 name = "pyweave-tauri"
-version = "0.2.0"
+version = "0.2.2"
 description = "PyWeave algorithm visualization shell"
 edition = "2024"
 
